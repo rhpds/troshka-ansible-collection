@@ -47,12 +47,12 @@
           guid: "{{ guid | default(omit) }}"
           workloads_only: "{{ true if troshka_deploy_mode == 'pattern_workloads' else omit }}"
         return_content: true
-        status_code: 200
+        status_code: [200, 201]
       register: _troshka_deploy_response
 
     - name: Set project ID
       ansible.builtin.set_fact:
-        troshka_project_id: "{{ _troshka_deploy_response.json.project_id }}"
+        troshka_project_id: "{{ _troshka_deploy_response.json.id }}"
 
 - name: Deploy from template
   when: troshka_deploy_mode == 'template'
@@ -82,12 +82,12 @@
           overrides: "{{ troshka_template_overrides }}"
           auto_deploy: false
         return_content: true
-        status_code: 200
+        status_code: [200, 201]
       register: _troshka_template_response
 
     - name: Set project ID
       ansible.builtin.set_fact:
-        troshka_project_id: "{{ _troshka_template_response.json.project_id }}"
+        troshka_project_id: "{{ _troshka_template_response.json.id }}"
 
 - name: Poll deployment progress
   ansible.builtin.uri:
@@ -119,7 +119,7 @@
     body:
       access_level: "{{ troshka_portal_access_level }}"
     return_content: true
-    status_code: 200
+    status_code: [200, 201]
   register: _troshka_portal_token
 
 - name: Get project details for bastion IP
