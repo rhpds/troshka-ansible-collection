@@ -25,11 +25,11 @@
         - name: Fail if pattern not found
           ansible.builtin.fail:
             msg: "Pattern '{{ troshka_pattern_name }}' not found"
-          when: _troshka_pattern_lookup.json.items | length == 0
+          when: _troshka_pattern_lookup.json | length == 0
 
         - name: Extract pattern ID
           ansible.builtin.set_fact:
-            troshka_pattern_id: "{{ _troshka_pattern_lookup.json.items[0].id }}"
+            troshka_pattern_id: "{{ _troshka_pattern_lookup.json[0].id }}"
 
     - name: Deploy pattern
       ansible.builtin.uri:
