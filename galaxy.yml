@@ -13,4 +13,4 @@ tags:
   - virtualization
 readme: README.md
 dependencies: {}
-repository: https://github.com/yourorg/troshka-ansible-collection
+repository: https://github.com/rhpds/troshka-ansible-collection
