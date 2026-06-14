@@ -11,5 +11,6 @@ tags:
   - troshka
   - nested
   - virtualization
+readme: README.md
 dependencies: {}
 repository: https://github.com/yourorg/troshka-ansible-collection
