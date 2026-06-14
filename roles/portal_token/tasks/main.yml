@@ -11,6 +11,7 @@
       access_level: "{{ troshka_portal_access_level | default('console') }}"
     status_code: [200, 201]
   register: portal_token_response
+  no_log: true
 
 - name: Set portal URL fact
   ansible.builtin.set_fact:

@@ -9,7 +9,14 @@
         headers:
           Authorization: "Bearer {{ troshka_api_key }}"
           Content-Type: "application/json"
-        status_code: [200, 202]
+        status_code: [200, 202, 409]
+      register: _start_resp
+      no_log: true
+
+    - name: Project already running
+      ansible.builtin.debug:
+        msg: "Project is already active"
+      when: _start_resp.status == 409
 
     - name: Wait for project to become active
       ansible.builtin.uri:
@@ -22,6 +29,8 @@
       until: project_status.json.state == "active"
       retries: 60
       delay: 10
+      no_log: true
+      when: _start_resp.status != 409
 
 - name: Stop Troshka project
   when: ACTION == "stop"
@@ -33,7 +42,14 @@
         headers:
           Authorization: "Bearer {{ troshka_api_key }}"
           Content-Type: "application/json"
-        status_code: [200, 202]
+        status_code: [200, 202, 409]
+      register: _stop_resp
+      no_log: true
+
+    - name: Project already stopped
+      ansible.builtin.debug:
+        msg: "Project is already stopped"
+      when: _stop_resp.status == 409
 
     - name: Wait for project to stop
       ansible.builtin.uri:
@@ -46,6 +62,8 @@
       until: project_status.json.state == "stopped"
       retries: 30
       delay: 10
+      no_log: true
+      when: _stop_resp.status != 409
 
 - name: Get Troshka project status
   when: ACTION == "status"
@@ -58,7 +76,48 @@
           Authorization: "Bearer {{ troshka_api_key }}"
         status_code: 200
       register: project_info
+      no_log: true
 
-    - name: Display project state
+    - name: Retrieve VM states
+      ansible.builtin.uri:
+        url: "{{ troshka_api_url }}/api/v1/projects/{{ troshka_project_id }}/vm-states"
+        method: GET
+        headers:
+          Authorization: "Bearer {{ troshka_api_key }}"
+        status_code: 200
+      register: vm_states_resp
+      no_log: true
+      when: project_info.json.state in ['active', 'stopped']
+
+    - name: Build VM name map
+      ansible.builtin.set_fact:
+        _vm_names: >-
+          {{ dict(
+               (project_info.json.topology or {}).get('nodes', [])
+               | selectattr('type', 'equalto', 'vmNode')
+               | map('dict2items')
+               | map('selectattr', 'key', 'in', ['id', 'data'])
+               | list
+               | map('items2dict')
+               | list
+               | map('combine', {})
+               | list
+               | json_query('[].{key: id, value: data.name}')
+             )
+          }}
+      no_log: true
+      ignore_errors: true
+
+    - name: Display project status
+      vars:
+        _states: "{{ vm_states_resp.json.states | default({}) if vm_states_resp is defined else {} }}"
+        _nodes: "{{ (project_info.json.topology or {}).get('nodes', []) | selectattr('type', 'equalto', 'vmNode') | list }}"
       ansible.builtin.debug:
-        msg: "Project {{ troshka_project_id }} state: {{ project_info.json.state }}"
+        msg: |
+          Project: {{ project_info.json.name }} ({{ troshka_project_id[:8] }})
+          State:   {{ project_info.json.state }}
+          OCP:     {{ project_info.json.ocp_status | default('n/a') }}
+          VMs:
+          {% for node in _nodes %}
+            {{ node.data.name | default(node.id[:8]) }}: {{ _states[node.id] | default('unknown') }}
+          {% endfor %}

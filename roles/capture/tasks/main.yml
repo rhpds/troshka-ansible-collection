@@ -20,6 +20,7 @@
       visibility: "{{ troshka_capture_visibility }}"
     status_code: [200, 201]
   register: pattern_create_response
+  no_log: true
 
 - name: Set pattern ID
   ansible.builtin.set_fact:
@@ -36,6 +37,7 @@
   until: pattern_status.json.state in ["available", "error"]
   retries: 120
   delay: 15
+  no_log: true
 
 - name: Fail if pattern capture errored
   ansible.builtin.fail:
@@ -55,3 +57,4 @@
       Authorization: "Bearer {{ troshka_api_key }}"
     status_code: [204, 404]
   when: troshka_delete_after_capture | bool
+  no_log: true

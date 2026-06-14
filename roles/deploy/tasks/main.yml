@@ -21,6 +21,7 @@
             return_content: true
             status_code: 200
           register: _troshka_pattern_lookup
+          no_log: true
 
         - name: Fail if pattern not found
           ansible.builtin.fail:
@@ -91,6 +92,10 @@
       ansible.builtin.set_fact:
         troshka_project_id: "{{ _troshka_template_response.json.id }}"
 
+- name: Waiting for deployment to complete
+  ansible.builtin.debug:
+    msg: "Project {{ troshka_project_id }} is deploying — polling every {{ troshka_deploy_poll_interval }}s..."
+
 - name: Poll deployment progress
   ansible.builtin.uri:
     url: "{{ troshka_api_url }}/api/v1/projects/{{ troshka_project_id }}/deploy-progress"
@@ -98,7 +103,6 @@
     headers:
       Authorization: "Bearer {{ troshka_api_key }}"
       Content-Type: "application/json"
-    return_content: true
     status_code: 200
   register: _troshka_progress
   until: _troshka_progress.json.state in ['active', 'error']
@@ -122,13 +126,17 @@
   register: _troshka_project_status
   no_log: true
 
+- name: Waiting for OCP cluster readiness (this may take 15-30 minutes)
+  ansible.builtin.debug:
+    msg: "OCP status is 'monitoring' — polling until cluster is ready..."
+  when: _troshka_project_status.json.ocp_status | default('') == 'monitoring'
+
 - name: Wait for OCP cluster readiness
   ansible.builtin.uri:
     url: "{{ troshka_api_url }}/api/v1/projects/{{ troshka_project_id }}"
     method: GET
     headers:
       Authorization: "Bearer {{ troshka_api_key }}"
-    return_content: true
     status_code: 200
   register: _troshka_ocp_wait
   until: _troshka_ocp_wait.json.ocp_status | default('') != 'monitoring'
@@ -150,6 +158,7 @@
     return_content: true
     status_code: [200, 201]
   register: _troshka_portal_token
+  no_log: true
 
 - name: Get project details for bastion IP
   ansible.builtin.uri:

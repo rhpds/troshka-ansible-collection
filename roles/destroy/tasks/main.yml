@@ -7,3 +7,4 @@
       Authorization: "Bearer {{ troshka_api_key }}"
     status_code: [204, 404]
   when: troshka_project_id is defined and troshka_project_id | length > 0
+  no_log: true

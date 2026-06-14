@@ -11,6 +11,7 @@
     return_content: true
     status_code: 200
   register: _troshka_project
+  no_log: true
 
 - name: Extract topology
   ansible.builtin.set_fact:
