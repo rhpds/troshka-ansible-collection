@@ -1,0 +1,159 @@
+---
+# Deploy a pattern or template to Troshka
+
+- name: Set project name
+  ansible.builtin.set_fact:
+    _troshka_project_name: "{{ guid | default(troshka_pattern_name | default('troshka-deployment')) }}"
+
+- name: Deploy from pattern
+  when: troshka_deploy_mode in ['pattern', 'pattern_workloads']
+  block:
+    - name: Look up pattern by name
+      when: troshka_pattern_id is not defined
+      block:
+        - name: Query patterns API
+          ansible.builtin.uri:
+            url: "{{ troshka_api_url }}/api/v1/patterns/?name={{ troshka_pattern_name | urlencode }}"
+            method: GET
+            headers:
+              Authorization: "Bearer {{ troshka_api_key }}"
+              Content-Type: "application/json"
+            return_content: true
+            status_code: 200
+          register: _troshka_pattern_lookup
+
+        - name: Fail if pattern not found
+          ansible.builtin.fail:
+            msg: "Pattern '{{ troshka_pattern_name }}' not found"
+          when: _troshka_pattern_lookup.json.items | length == 0
+
+        - name: Extract pattern ID
+          ansible.builtin.set_fact:
+            troshka_pattern_id: "{{ _troshka_pattern_lookup.json.items[0].id }}"
+
+    - name: Deploy pattern
+      ansible.builtin.uri:
+        url: "{{ troshka_api_url }}/api/v1/patterns/{{ troshka_pattern_id }}/deploy"
+        method: POST
+        headers:
+          Authorization: "Bearer {{ troshka_api_key }}"
+          Content-Type: "application/json"
+        body_format: json
+        body:
+          name: "{{ _troshka_project_name }}"
+          inject_vars: "{{ troshka_inject_vars }}"
+          auto_deploy: "{{ troshka_auto_deploy }}"
+          auto_start: "{{ troshka_auto_start }}"
+          guid: "{{ guid | default(omit) }}"
+          workloads_only: "{{ true if troshka_deploy_mode == 'pattern_workloads' else omit }}"
+        return_content: true
+        status_code: 200
+      register: _troshka_deploy_response
+
+    - name: Set project ID
+      ansible.builtin.set_fact:
+        troshka_project_id: "{{ _troshka_deploy_response.json.project_id }}"
+
+- name: Deploy from template
+  when: troshka_deploy_mode == 'template'
+  block:
+    - name: Fail if template not specified
+      ansible.builtin.fail:
+        msg: "troshka_template is required for template deployment mode"
+      when: troshka_template is not defined
+
+    - name: Fail if template version not specified
+      ansible.builtin.fail:
+        msg: "troshka_template_version is required for template deployment mode"
+      when: troshka_template_version is not defined
+
+    - name: Deploy template
+      ansible.builtin.uri:
+        url: "{{ troshka_api_url }}/api/v1/deploy-template"
+        method: POST
+        headers:
+          Authorization: "Bearer {{ troshka_api_key }}"
+          Content-Type: "application/json"
+        body_format: json
+        body:
+          template: "{{ troshka_template }}"
+          version: "{{ troshka_template_version }}"
+          name: "{{ _troshka_project_name }}"
+          overrides: "{{ troshka_template_overrides }}"
+          auto_deploy: false
+        return_content: true
+        status_code: 200
+      register: _troshka_template_response
+
+    - name: Set project ID
+      ansible.builtin.set_fact:
+        troshka_project_id: "{{ _troshka_template_response.json.project_id }}"
+
+- name: Poll deployment progress
+  ansible.builtin.uri:
+    url: "{{ troshka_api_url }}/api/v1/projects/{{ troshka_project_id }}/deploy-progress"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ troshka_api_key }}"
+      Content-Type: "application/json"
+    return_content: true
+    status_code: 200
+  register: _troshka_progress
+  until: _troshka_progress.json.state in ['active', 'error']
+  retries: "{{ troshka_deploy_poll_retries }}"
+  delay: "{{ troshka_deploy_poll_interval }}"
+
+- name: Fail if deployment error
+  ansible.builtin.fail:
+    msg: "Deployment failed: {{ _troshka_progress.json.error_message | default('Unknown error') }}"
+  when: _troshka_progress.json.state == 'error'
+
+- name: Create portal token
+  ansible.builtin.uri:
+    url: "{{ troshka_api_url }}/api/v1/projects/{{ troshka_project_id }}/portal-token"
+    method: POST
+    headers:
+      Authorization: "Bearer {{ troshka_api_key }}"
+      Content-Type: "application/json"
+    body_format: json
+    body:
+      access_level: "{{ troshka_portal_access_level }}"
+    return_content: true
+    status_code: 200
+  register: _troshka_portal_token
+
+- name: Get project details for bastion IP
+  ansible.builtin.uri:
+    url: "{{ troshka_api_url }}/api/v1/projects/{{ troshka_project_id }}"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ troshka_api_key }}"
+      Content-Type: "application/json"
+    return_content: true
+    status_code: 200
+  register: _troshka_project
+
+- name: Extract bastion external IP
+  ansible.builtin.set_fact:
+    _troshka_bastion_external_ip: >-
+      {{
+        _troshka_project.json.topology.externalIps
+        | selectattr('type', 'equalto', 'bastion')
+        | map(attribute='ip')
+        | first
+        | default('')
+      }}
+
+- name: Set output facts
+  ansible.builtin.set_fact:
+    troshka_project_id: "{{ troshka_project_id }}"
+    troshka_portal_url: "{{ _troshka_portal_token.json.portal_url }}"
+    troshka_showroom_url: "https://{{ _troshka_bastion_external_ip }}"
+
+- name: Display deployment summary
+  ansible.builtin.debug:
+    msg:
+      - "Deployment complete"
+      - "Project ID: {{ troshka_project_id }}"
+      - "Portal URL: {{ troshka_portal_url }}"
+      - "Showroom URL: {{ troshka_showroom_url }}"

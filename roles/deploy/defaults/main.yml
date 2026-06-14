@@ -1,0 +1,24 @@
+---
+# Default variables for troshka.cloud.deploy role
+
+# Deployment mode: "pattern", "pattern_workloads", or "template"
+troshka_deploy_mode: "pattern"
+
+# Auto-deploy after creating project
+troshka_auto_deploy: true
+
+# Auto-start VMs after deployment
+troshka_auto_start: true
+
+# Portal access level: "console", "readonly", "full"
+troshka_portal_access_level: "console"
+
+# Variables to inject into bastion VM (empty by default)
+troshka_inject_vars: {}
+
+# Template overrides (for template mode)
+troshka_template_overrides: {}
+
+# Polling configuration
+troshka_deploy_poll_interval: 15
+troshka_deploy_poll_retries: 240  # 1 hour timeout (240 * 15s)

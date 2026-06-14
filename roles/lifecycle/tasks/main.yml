@@ -1,0 +1,64 @@
+---
+- name: Start Troshka project
+  when: ACTION == "start"
+  block:
+    - name: Send start request
+      ansible.builtin.uri:
+        url: "{{ troshka_api_url }}/api/v1/projects/{{ troshka_project_id }}/start"
+        method: POST
+        headers:
+          Authorization: "Bearer {{ troshka_api_key }}"
+          Content-Type: "application/json"
+        status_code: [200, 202]
+
+    - name: Wait for project to become active
+      ansible.builtin.uri:
+        url: "{{ troshka_api_url }}/api/v1/projects/{{ troshka_project_id }}"
+        method: GET
+        headers:
+          Authorization: "Bearer {{ troshka_api_key }}"
+        status_code: 200
+      register: project_status
+      until: project_status.json.state == "active"
+      retries: 60
+      delay: 10
+
+- name: Stop Troshka project
+  when: ACTION == "stop"
+  block:
+    - name: Send stop request
+      ansible.builtin.uri:
+        url: "{{ troshka_api_url }}/api/v1/projects/{{ troshka_project_id }}/stop"
+        method: POST
+        headers:
+          Authorization: "Bearer {{ troshka_api_key }}"
+          Content-Type: "application/json"
+        status_code: [200, 202]
+
+    - name: Wait for project to stop
+      ansible.builtin.uri:
+        url: "{{ troshka_api_url }}/api/v1/projects/{{ troshka_project_id }}"
+        method: GET
+        headers:
+          Authorization: "Bearer {{ troshka_api_key }}"
+        status_code: 200
+      register: project_status
+      until: project_status.json.state == "stopped"
+      retries: 30
+      delay: 10
+
+- name: Get Troshka project status
+  when: ACTION == "status"
+  block:
+    - name: Retrieve project state
+      ansible.builtin.uri:
+        url: "{{ troshka_api_url }}/api/v1/projects/{{ troshka_project_id }}"
+        method: GET
+        headers:
+          Authorization: "Bearer {{ troshka_api_key }}"
+        status_code: 200
+      register: project_info
+
+    - name: Display project state
+      ansible.builtin.debug:
+        msg: "Project {{ troshka_project_id }} state: {{ project_info.json.state }}"

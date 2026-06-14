@@ -1,0 +1,57 @@
+---
+- name: Validate required variables
+  ansible.builtin.assert:
+    that:
+      - troshka_capture_pattern_name is defined
+      - troshka_capture_pattern_name | length > 0
+    fail_msg: "troshka_capture_pattern_name must be defined and non-empty"
+
+- name: Create pattern from project
+  ansible.builtin.uri:
+    url: "{{ troshka_api_url }}/api/v1/patterns/"
+    method: POST
+    headers:
+      Authorization: "Bearer {{ troshka_api_key }}"
+      Content-Type: "application/json"
+    body_format: json
+    body:
+      name: "{{ troshka_capture_pattern_name }}"
+      source_project_id: "{{ troshka_project_id }}"
+      visibility: "{{ troshka_capture_visibility }}"
+    status_code: [200, 201]
+  register: pattern_create_response
+
+- name: Set pattern ID
+  ansible.builtin.set_fact:
+    _troshka_pattern_id: "{{ pattern_create_response.json.id }}"
+
+- name: Wait for pattern capture to complete
+  ansible.builtin.uri:
+    url: "{{ troshka_api_url }}/api/v1/patterns/{{ _troshka_pattern_id }}"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ troshka_api_key }}"
+    status_code: 200
+  register: pattern_status
+  until: pattern_status.json.state in ["available", "error"]
+  retries: 120
+  delay: 15
+
+- name: Fail if pattern capture errored
+  ansible.builtin.fail:
+    msg: "Pattern capture failed with state: {{ pattern_status.json.state }}"
+  when: pattern_status.json.state == "error"
+
+- name: Set pattern facts
+  ansible.builtin.set_fact:
+    troshka_captured_pattern_id: "{{ _troshka_pattern_id }}"
+    troshka_captured_pattern_name: "{{ troshka_capture_pattern_name }}"
+
+- name: Delete source project after capture
+  ansible.builtin.uri:
+    url: "{{ troshka_api_url }}/api/v1/projects/{{ troshka_project_id }}"
+    method: DELETE
+    headers:
+      Authorization: "Bearer {{ troshka_api_key }}"
+    status_code: [204, 404]
+  when: troshka_delete_after_capture | bool

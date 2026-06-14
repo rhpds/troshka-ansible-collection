@@ -1,0 +1,9 @@
+---
+- name: Delete Troshka project
+  ansible.builtin.uri:
+    url: "{{ troshka_api_url }}/api/v1/projects/{{ troshka_project_id }}"
+    method: DELETE
+    headers:
+      Authorization: "Bearer {{ troshka_api_key }}"
+    status_code: [204, 404]
+  when: troshka_project_id is defined and troshka_project_id | length > 0
