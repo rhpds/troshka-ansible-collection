@@ -49,6 +49,7 @@
         return_content: true
         status_code: [200, 201]
       register: _troshka_deploy_response
+      no_log: true
 
     - name: Set project ID
       ansible.builtin.set_fact:
@@ -84,6 +85,7 @@
         return_content: true
         status_code: [200, 201]
       register: _troshka_template_response
+      no_log: true
 
     - name: Set project ID
       ansible.builtin.set_fact:
@@ -102,6 +104,7 @@
   until: _troshka_progress.json.state in ['active', 'error']
   retries: "{{ troshka_deploy_poll_retries }}"
   delay: "{{ troshka_deploy_poll_interval }}"
+  no_log: true
 
 - name: Fail if deployment error
   ansible.builtin.fail:
@@ -117,6 +120,7 @@
     return_content: true
     status_code: 200
   register: _troshka_project_status
+  no_log: true
 
 - name: Wait for OCP cluster readiness
   ansible.builtin.uri:
@@ -131,6 +135,7 @@
   retries: 180
   delay: 15
   when: _troshka_project_status.json.ocp_status | default('') == 'monitoring'
+  no_log: true
 
 - name: Create portal token
   ansible.builtin.uri:
@@ -156,6 +161,7 @@
     return_content: true
     status_code: 200
   register: _troshka_project
+  no_log: true
 
 - name: Extract bastion external IP
   ansible.builtin.set_fact:
