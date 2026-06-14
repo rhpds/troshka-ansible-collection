@@ -8,7 +8,7 @@ from ansible.plugins.inventory import BaseInventoryPlugin
 from ansible.errors import AnsibleError
 from ansible_collections.agnosticd.cloud_provider_troshka.plugins.module_utils.troshka_api import (
     TroshkaAPI,
-    TroshkaAPIError
+    TroshkaAPIError,
 )
 
 
@@ -39,7 +39,7 @@ DOCUMENTATION = """
 class InventoryModule(BaseInventoryPlugin):
     """Troshka dynamic inventory plugin."""
 
-    NAME = 'agnosticd.cloud_provider_troshka.troshka'
+    NAME = "agnosticd.cloud_provider_troshka.troshka"
 
     def verify_file(self, path):
         """
@@ -47,7 +47,7 @@ class InventoryModule(BaseInventoryPlugin):
         Accept .troshka.yml or .troshka.yaml files.
         """
         if super(InventoryModule, self).verify_file(path):
-            return path.endswith(('.troshka.yml', '.troshka.yaml'))
+            return path.endswith((".troshka.yml", ".troshka.yaml"))
         return False
 
     def parse(self, inventory, loader, path, cache=True):
@@ -58,9 +58,9 @@ class InventoryModule(BaseInventoryPlugin):
         self._read_config_data(path)
 
         try:
-            api_url = self.get_option('api_url')
-            api_key = self.get_option('api_key')
-            project_id = self.get_option('project_id')
+            api_url = self.get_option("api_url")
+            api_key = self.get_option("api_key")
+            project_id = self.get_option("project_id")
         except Exception as e:
             raise AnsibleError(f"Missing required configuration: {e}")
 
@@ -79,82 +79,88 @@ class InventoryModule(BaseInventoryPlugin):
         if not project:
             raise AnsibleError(f"Project {project_id} not found")
 
-        topology = project.get('topology', {})
+        topology = project.get("topology", {})
         if not topology:
             raise AnsibleError(f"Project {project_id} has no topology")
 
-        nodes = topology.get('nodes', [])
-        external_ips = topology.get('externalIps', [])
+        nodes = topology.get("nodes", [])
+        external_ips = topology.get("externalIps", [])
 
         # Find bastion VM and its external IP
         bastion_node = None
         bastion_external_ip = None
 
         for node in nodes:
-            if node.get('type') != 'vmNode':
+            if node.get("type") != "vmNode":
                 continue
 
-            data = node.get('data', {})
-            tags = data.get('tags', {})
-            ansible_groups = tags.get('AnsibleGroup', '')
+            data = node.get("data", {})
+            tags = data.get("tags", {})
+            ansible_groups = tags.get("AnsibleGroup", "")
 
             # Check if this VM is in the bastions group
-            if 'bastions' in [g.strip() for g in ansible_groups.split(',') if g.strip()]:
+            if "bastions" in [
+                g.strip() for g in ansible_groups.split(",") if g.strip()
+            ]:
                 bastion_node = node
-                bastion_vm_id = node.get('id')
+                bastion_vm_id = node.get("id")
 
                 # Look for external IP in externalIps array
                 for eip in external_ips:
-                    if eip.get('vmId') == bastion_vm_id:
-                        bastion_external_ip = eip.get('ip')
+                    if eip.get("vmId") == bastion_vm_id:
+                        bastion_external_ip = eip.get("ip")
                         break
 
                 # If not in externalIps, check portForwards in node data
                 if not bastion_external_ip:
-                    port_forwards = data.get('portForwards', [])
+                    port_forwards = data.get("portForwards", [])
                     for pf in port_forwards:
-                        if pf.get('externalIp'):
-                            bastion_external_ip = pf['externalIp']
+                        if pf.get("externalIp"):
+                            bastion_external_ip = pf["externalIp"]
                             break
 
                 break
 
         if not bastion_node:
-            raise AnsibleError("No bastion host found in topology (no VM with 'bastions' in AnsibleGroup)")
+            raise AnsibleError(
+                "No bastion host found in topology (no VM with 'bastions' in AnsibleGroup)"
+            )
 
         if not bastion_external_ip:
-            raise AnsibleError(f"Bastion VM {bastion_node.get('id')} has no external IP")
+            raise AnsibleError(
+                f"Bastion VM {bastion_node.get('id')} has no external IP"
+            )
 
-        bastion_hostname = bastion_node.get('data', {}).get('name', 'bastion')
+        bastion_hostname = bastion_node.get("data", {}).get("name", "bastion")
 
         # Process all VM nodes
         for node in nodes:
-            if node.get('type') != 'vmNode':
+            if node.get("type") != "vmNode":
                 continue
 
-            data = node.get('data', {})
-            vm_name = data.get('name')
-            vm_id = node.get('id')
+            data = node.get("data", {})
+            vm_name = data.get("name")
+            vm_id = node.get("id")
 
             if not vm_name:
                 continue
 
-            tags = data.get('tags', {})
-            ansible_groups = tags.get('AnsibleGroup', '')
+            tags = data.get("tags", {})
+            ansible_groups = tags.get("AnsibleGroup", "")
 
             # Parse comma-separated groups
-            groups = [g.strip() for g in ansible_groups.split(',') if g.strip()]
+            groups = [g.strip() for g in ansible_groups.split(",") if g.strip()]
 
             if not groups:
                 # Skip VMs without AnsibleGroup tags
                 continue
 
             # Get VM's internal IP from first NIC
-            nics = data.get('nics', [])
+            nics = data.get("nics", [])
             if not nics:
                 raise AnsibleError(f"VM {vm_name} has no NICs")
 
-            vm_ip = nics[0].get('ip')
+            vm_ip = nics[0].get("ip")
             if not vm_ip:
                 raise AnsibleError(f"VM {vm_name} first NIC has no IP")
 
@@ -167,18 +173,20 @@ class InventoryModule(BaseInventoryPlugin):
                 self.inventory.add_child(group, vm_name)
 
             # Set host variables
-            self.inventory.set_variable(vm_name, 'troshka_vm_id', vm_id)
-            self.inventory.set_variable(vm_name, 'troshka_vm_name', vm_name)
+            self.inventory.set_variable(vm_name, "troshka_vm_id", vm_id)
+            self.inventory.set_variable(vm_name, "troshka_vm_name", vm_name)
 
             # Configure connection
             if vm_name == bastion_hostname:
                 # Bastion: use external IP
-                self.inventory.set_variable(vm_name, 'ansible_host', bastion_external_ip)
+                self.inventory.set_variable(
+                    vm_name, "ansible_host", bastion_external_ip
+                )
             else:
                 # Non-bastion: use internal IP with ProxyJump through bastion
-                self.inventory.set_variable(vm_name, 'ansible_host', vm_ip)
+                self.inventory.set_variable(vm_name, "ansible_host", vm_ip)
                 self.inventory.set_variable(
                     vm_name,
-                    'ansible_ssh_common_args',
-                    f'-o ProxyJump={bastion_external_ip}'
+                    "ansible_ssh_common_args",
+                    f"-o ProxyJump={bastion_external_ip}",
                 )

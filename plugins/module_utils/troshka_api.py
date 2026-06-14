@@ -14,6 +14,7 @@ import urllib.parse
 
 class TroshkaAPIError(Exception):
     """Exception raised for Troshka API errors."""
+
     pass
 
 
@@ -27,10 +28,10 @@ class TroshkaAPI:
     """
 
     def __init__(self, api_url, api_key):
-        self.api_url = api_url.rstrip('/')
+        self.api_url = api_url.rstrip("/")
         self.api_key = api_key
 
-        if not api_key.startswith('trk_'):
+        if not api_key.startswith("trk_"):
             raise TroshkaAPIError("API key must start with 'trk_'")
 
     def _request(self, method, path, body=None):
@@ -50,29 +51,29 @@ class TroshkaAPI:
         """
         url = self.api_url + path
         headers = {
-            'Authorization': f'Bearer {self.api_key}',
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+            "Accept": "application/json",
         }
 
         data = None
         if body is not None:
-            data = json.dumps(body).encode('utf-8')
+            data = json.dumps(body).encode("utf-8")
 
         req = urllib.request.Request(url, data=data, headers=headers, method=method)
 
         try:
             with urllib.request.urlopen(req) as response:
-                response_text = response.read().decode('utf-8')
+                response_text = response.read().decode("utf-8")
                 if response_text:
                     return json.loads(response_text)
                 return None
         except urllib.error.HTTPError as e:
             error_body = ""
             try:
-                error_body = e.read().decode('utf-8')
+                error_body = e.read().decode("utf-8")
                 error_data = json.loads(error_body)
-                error_msg = error_data.get('detail', error_body)
+                error_msg = error_data.get("detail", error_body)
             except (json.JSONDecodeError, UnicodeDecodeError):
                 error_msg = error_body if error_body else str(e)
 
@@ -97,10 +98,17 @@ class TroshkaAPI:
         path = "/api/v1/patterns/"
         if name:
             path += f"?name={urllib.parse.quote(name)}"
-        return self._request('GET', path)
+        return self._request("GET", path)
 
-    def deploy_pattern(self, pattern_id, name=None, inject_vars=None,
-                      auto_deploy=True, auto_start=True, guid=None):
+    def deploy_pattern(
+        self,
+        pattern_id,
+        name=None,
+        inject_vars=None,
+        auto_deploy=True,
+        auto_start=True,
+        guid=None,
+    ):
         """
         Deploy a pattern to create a new project.
 
@@ -115,21 +123,25 @@ class TroshkaAPI:
         Returns:
             Project dict with keys: id, name, state, topology
         """
-        body = {
-            'auto_deploy': auto_deploy,
-            'auto_start': auto_start
-        }
+        body = {"auto_deploy": auto_deploy, "auto_start": auto_start}
         if name:
-            body['name'] = name
+            body["name"] = name
         if inject_vars:
-            body['inject_vars'] = inject_vars
+            body["inject_vars"] = inject_vars
         if guid:
-            body['guid'] = guid
+            body["guid"] = guid
 
-        return self._request('POST', f"/api/v1/patterns/{pattern_id}/deploy", body)
+        return self._request("POST", f"/api/v1/patterns/{pattern_id}/deploy", body)
 
-    def deploy_template(self, template, version, name, overrides=None,
-                       auto_deploy=False, auto_start=True):
+    def deploy_template(
+        self,
+        template,
+        version,
+        name,
+        overrides=None,
+        auto_deploy=False,
+        auto_start=True,
+    ):
         """
         Deploy a topology template.
 
@@ -145,16 +157,16 @@ class TroshkaAPI:
             Project dict with keys: id, name, state, topology
         """
         body = {
-            'template': template,
-            'version': version,
-            'name': name,
-            'auto_deploy': auto_deploy,
-            'auto_start': auto_start
+            "template": template,
+            "version": version,
+            "name": name,
+            "auto_deploy": auto_deploy,
+            "auto_start": auto_start,
         }
         if overrides:
-            body['overrides'] = overrides
+            body["overrides"] = overrides
 
-        return self._request('POST', '/api/v1/deploy-template', body)
+        return self._request("POST", "/api/v1/deploy-template", body)
 
     def get_project(self, project_id):
         """
@@ -166,7 +178,7 @@ class TroshkaAPI:
         Returns:
             Project dict
         """
-        return self._request('GET', f"/api/v1/projects/{project_id}")
+        return self._request("GET", f"/api/v1/projects/{project_id}")
 
     def delete_project(self, project_id):
         """
@@ -178,7 +190,7 @@ class TroshkaAPI:
         Returns:
             Response dict
         """
-        return self._request('DELETE', f"/api/v1/projects/{project_id}")
+        return self._request("DELETE", f"/api/v1/projects/{project_id}")
 
     def start_project(self, project_id):
         """
@@ -190,7 +202,7 @@ class TroshkaAPI:
         Returns:
             Response dict
         """
-        return self._request('POST', f"/api/v1/projects/{project_id}/start")
+        return self._request("POST", f"/api/v1/projects/{project_id}/start")
 
     def stop_project(self, project_id):
         """
@@ -202,7 +214,7 @@ class TroshkaAPI:
         Returns:
             Response dict
         """
-        return self._request('POST', f"/api/v1/projects/{project_id}/stop")
+        return self._request("POST", f"/api/v1/projects/{project_id}/stop")
 
     def get_deploy_progress(self, project_id):
         """
@@ -214,7 +226,7 @@ class TroshkaAPI:
         Returns:
             Progress dict with keys: phase, message, detail, etc.
         """
-        return self._request('GET', f"/api/v1/projects/{project_id}/deploy-progress")
+        return self._request("GET", f"/api/v1/projects/{project_id}/deploy-progress")
 
     def create_portal_token(self, project_id, access_level="console"):
         """
@@ -227,8 +239,10 @@ class TroshkaAPI:
         Returns:
             Dict with keys: token, access_level, portal_url
         """
-        body = {'access_level': access_level}
-        return self._request('POST', f"/api/v1/projects/{project_id}/portal-token", body)
+        body = {"access_level": access_level}
+        return self._request(
+            "POST", f"/api/v1/projects/{project_id}/portal-token", body
+        )
 
     def capture_pattern(self, name, source_project_id, visibility="private"):
         """
@@ -243,11 +257,11 @@ class TroshkaAPI:
             Pattern dict with state="capturing"
         """
         body = {
-            'name': name,
-            'source_project_id': source_project_id,
-            'visibility': visibility
+            "name": name,
+            "source_project_id": source_project_id,
+            "visibility": visibility,
         }
-        return self._request('POST', '/api/v1/patterns/', body)
+        return self._request("POST", "/api/v1/patterns/", body)
 
     def get_pattern(self, pattern_id):
         """
@@ -259,9 +273,11 @@ class TroshkaAPI:
         Returns:
             Pattern dict
         """
-        return self._request('GET', f"/api/v1/patterns/{pattern_id}")
+        return self._request("GET", f"/api/v1/patterns/{pattern_id}")
 
-    def wait_for_project_state(self, project_id, target_states, timeout=600, poll_interval=10):
+    def wait_for_project_state(
+        self, project_id, target_states, timeout=600, poll_interval=10
+    ):
         """
         Poll project until it reaches one of the target states.
 
@@ -281,7 +297,7 @@ class TroshkaAPI:
 
         while True:
             project = self.get_project(project_id) or {}
-            current_state = project.get('state')
+            current_state = project.get("state")
 
             if current_state in target_states:
                 return project
@@ -295,7 +311,9 @@ class TroshkaAPI:
 
             time.sleep(poll_interval)
 
-    def wait_for_pattern_state(self, pattern_id, target_states, timeout=1800, poll_interval=15):
+    def wait_for_pattern_state(
+        self, pattern_id, target_states, timeout=1800, poll_interval=15
+    ):
         """
         Poll pattern until it reaches one of the target states.
 
@@ -315,7 +333,7 @@ class TroshkaAPI:
 
         while True:
             pattern = self.get_pattern(pattern_id) or {}
-            current_state = pattern.get('state')
+            current_state = pattern.get("state")
 
             if current_state in target_states:
                 return pattern
