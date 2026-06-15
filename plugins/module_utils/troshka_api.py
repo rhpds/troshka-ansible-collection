@@ -6,7 +6,9 @@ This module provides a shared API client class that uses only urllib.request
 """
 
 import json
+import os
 import time
+import uuid
 import urllib.request
 import urllib.error
 import urllib.parse
@@ -346,3 +348,138 @@ class TroshkaAPI:
                 )
 
             time.sleep(poll_interval)
+
+    def exec_command(
+        self,
+        project_id,
+        vm_id,
+        command,
+        username="cloud-user",
+        password="",
+        timeout=30,
+        use_ssh=True,
+    ):
+        """Execute a command on a VM.
+
+        Returns:
+            Dict with keys: output, error, exit_code
+        """
+        body = {
+            "command": command,
+            "username": username,
+            "timeout": timeout,
+            "use_ssh": use_ssh,
+        }
+        if password:
+            body["password"] = password
+        return self._request(
+            "POST", f"/api/v1/projects/{project_id}/vms/{vm_id}/exec", body
+        )
+
+    def upload_file(
+        self,
+        project_id,
+        vm_id,
+        local_path,
+        remote_path,
+        username="cloud-user",
+        password="",
+        mode="0644",
+    ):
+        """Upload a file to a VM via multipart upload.
+
+        Returns:
+            Dict with keys: size, remote_path
+        """
+        with open(local_path, "rb") as f:
+            file_data = f.read()
+
+        boundary = uuid.uuid4().hex
+        filename = os.path.basename(local_path)
+
+        qs = urllib.parse.urlencode(
+            {
+                "remote_path": remote_path,
+                "mode": mode,
+                "username": username,
+                **({"password": password} if password else {}),
+            }
+        )
+        url = f"{self.api_url}/api/v1/projects/{project_id}/vms/{vm_id}/files?{qs}"
+
+        body_parts = []
+        body_parts.append(f"--{boundary}".encode())
+        body_parts.append(
+            f'Content-Disposition: form-data; name="file"; filename="{filename}"'.encode()
+        )
+        body_parts.append(b"Content-Type: application/octet-stream")
+        body_parts.append(b"")
+        body_parts.append(file_data)
+        body_parts.append(f"--{boundary}--".encode())
+        body = b"\r\n".join(body_parts)
+
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": f"multipart/form-data; boundary={boundary}",
+        }
+
+        req = urllib.request.Request(url, data=body, headers=headers, method="PUT")
+
+        try:
+            with urllib.request.urlopen(req) as response:
+                return json.loads(response.read().decode())
+        except urllib.error.HTTPError as e:
+            error_body = e.read().decode() if e.fp else str(e)
+            try:
+                error_msg = json.loads(error_body).get("detail", error_body)
+            except (json.JSONDecodeError, ValueError):
+                error_msg = error_body
+            raise TroshkaAPIError(f"File upload failed (HTTP {e.code}): {error_msg}")
+        except urllib.error.URLError as e:
+            raise TroshkaAPIError(f"Failed to connect for file upload: {e.reason}")
+
+    def download_file(
+        self,
+        project_id,
+        vm_id,
+        remote_path,
+        local_path,
+        username="cloud-user",
+        password="",
+    ):
+        """Download a file from a VM to a local path.
+
+        Returns:
+            Dict with keys: size, local_path
+        """
+        qs = urllib.parse.urlencode(
+            {
+                "remote_path": remote_path,
+                "username": username,
+                **({"password": password} if password else {}),
+            }
+        )
+        url = f"{self.api_url}/api/v1/projects/{project_id}/vms/{vm_id}/files?{qs}"
+
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Accept": "application/octet-stream",
+        }
+
+        req = urllib.request.Request(url, headers=headers, method="GET")
+
+        try:
+            with urllib.request.urlopen(req) as response:
+                data = response.read()
+                with open(local_path, "wb") as f:
+                    f.write(data)
+                return {"size": len(data), "local_path": local_path}
+        except urllib.error.HTTPError as e:
+            error_body = e.read().decode() if e.fp else str(e)
+            try:
+                error_msg = json.loads(error_body).get("detail", error_body)
+            except (json.JSONDecodeError, ValueError):
+                error_msg = error_body
+            raise TroshkaAPIError(f"File download failed (HTTP {e.code}): {error_msg}")
+        except urllib.error.URLError as e:
+            raise TroshkaAPIError(f"Failed to connect for file download: {e.reason}")

@@ -1,0 +1,225 @@
+"""
+Troshka connection plugin for Ansible.
+
+Executes commands and transfers files on VMs inside Troshka nested
+environments via the Troshka API, without requiring direct SSH access
+from the Ansible controller.
+
+Usage in inventory::
+
+    bastion:
+      ansible_connection: agnosticd.cloud_provider_troshka.troshka
+      troshka_api_url: https://troshka.example.com
+      troshka_api_key: trk_...
+      troshka_project_id: <project-uuid>
+      troshka_vm_id: <vm-node-id>
+      ansible_user: cloud-user
+"""
+
+from __future__ import annotations
+
+import os
+import shlex
+
+from ansible.errors import AnsibleConnectionFailure, AnsibleFileNotFound
+from ansible.plugins.connection import ConnectionBase
+from ansible.utils.display import Display
+
+display = Display()
+
+DOCUMENTATION = """
+    name: troshka
+    short_description: Execute commands and transfer files via Troshka API
+    description:
+        - Run commands on VMs inside Troshka nested environments
+        - Transfer files using the Troshka file push/pull API
+        - No direct SSH from the controller is required
+    author: Troshka Team
+    options:
+        troshka_api_url:
+            description: Troshka API base URL
+            type: str
+            required: true
+            vars:
+                - name: troshka_api_url
+            env:
+                - name: TROSHKA_API_URL
+        troshka_api_key:
+            description: Troshka API key (trk_...)
+            type: str
+            required: true
+            vars:
+                - name: troshka_api_key
+            env:
+                - name: TROSHKA_API_KEY
+        troshka_project_id:
+            description: Troshka project ID
+            type: str
+            required: true
+            vars:
+                - name: troshka_project_id
+        troshka_vm_id:
+            description: Troshka VM node ID
+            type: str
+            required: true
+            vars:
+                - name: troshka_vm_id
+        troshka_timeout:
+            description: Command execution timeout in seconds
+            type: int
+            default: 30
+            vars:
+                - name: troshka_timeout
+"""
+
+
+class Connection(ConnectionBase):
+    """Troshka API-based connection plugin."""
+
+    transport = "agnosticd.cloud_provider_troshka.troshka"
+    has_pipelining = False
+    has_tty = False
+
+    def __init__(self, play_context, new_stdin, *args, **kwargs):
+        super().__init__(play_context, new_stdin, *args, **kwargs)
+        self._api = None
+
+    def _get_api(self):
+        if self._api is not None:
+            return self._api
+
+        from ansible_collections.agnosticd.cloud_provider_troshka.plugins.module_utils.troshka_api import (
+            TroshkaAPI,
+            TroshkaAPIError,
+        )
+
+        api_url = self.get_option("troshka_api_url")
+        api_key = self.get_option("troshka_api_key")
+
+        if not api_url or not api_key:
+            raise AnsibleConnectionFailure(
+                "troshka_api_url and troshka_api_key are required"
+            )
+
+        try:
+            self._api = TroshkaAPI(api_url, api_key)
+        except TroshkaAPIError as e:
+            raise AnsibleConnectionFailure(f"Failed to create Troshka API client: {e}")
+
+        return self._api
+
+    def _connect(self):
+        self._get_api()
+        self._connected = True
+        return self
+
+    def close(self):
+        self._connected = False
+
+    def exec_command(self, cmd, in_data=None, sudoable=True):
+        super().exec_command(cmd, in_data=in_data, sudoable=sudoable)
+
+        from ansible_collections.agnosticd.cloud_provider_troshka.plugins.module_utils.troshka_api import (
+            TroshkaAPIError,
+        )
+
+        api = self._get_api()
+        project_id = self.get_option("troshka_project_id")
+        vm_id = self.get_option("troshka_vm_id")
+        username = self._play_context.remote_user or "cloud-user"
+        password = self._play_context.password or ""
+        timeout = self.get_option("troshka_timeout")
+
+        if sudoable and self._play_context.become:
+            become_cmd = self._play_context.become_method or "sudo"
+            become_user = self._play_context.become_user or "root"
+            if self._play_context.become_pass:
+                cmd = f"echo {shlex.quote(self._play_context.become_pass)} | {become_cmd} -S -u {become_user} {cmd}"
+            else:
+                cmd = f"{become_cmd} -u {become_user} {cmd}"
+
+        display.vvv(f"TROSHKA EXEC: {cmd}", host=self._play_context.remote_addr)
+
+        try:
+            result = api.exec_command(
+                project_id,
+                vm_id,
+                cmd,
+                username=username,
+                password=password,
+                timeout=timeout,
+            )
+        except TroshkaAPIError as e:
+            raise AnsibleConnectionFailure(f"Troshka exec failed: {e}")
+
+        stdout = (result.get("output") or "").encode()
+        stderr = (result.get("error") or "").encode()
+        exit_code = result.get("exit_code", 0)
+
+        if not exit_code and stderr:
+            exit_code = 1
+
+        return exit_code, stdout, stderr
+
+    def put_file(self, in_path, out_path):
+        super().put_file(in_path, out_path)
+
+        from ansible_collections.agnosticd.cloud_provider_troshka.plugins.module_utils.troshka_api import (
+            TroshkaAPIError,
+        )
+
+        if not os.path.exists(in_path):
+            raise AnsibleFileNotFound(f"Input path not found: {in_path}")
+
+        api = self._get_api()
+        project_id = self.get_option("troshka_project_id")
+        vm_id = self.get_option("troshka_vm_id")
+        username = self._play_context.remote_user or "cloud-user"
+        password = self._play_context.password or ""
+
+        display.vvv(
+            f"TROSHKA PUT: {in_path} -> {out_path}",
+            host=self._play_context.remote_addr,
+        )
+
+        try:
+            api.upload_file(
+                project_id,
+                vm_id,
+                in_path,
+                out_path,
+                username=username,
+                password=password,
+            )
+        except TroshkaAPIError as e:
+            raise AnsibleConnectionFailure(f"Troshka file upload failed: {e}")
+
+    def fetch_file(self, in_path, out_path):
+        super().fetch_file(in_path, out_path)
+
+        from ansible_collections.agnosticd.cloud_provider_troshka.plugins.module_utils.troshka_api import (
+            TroshkaAPIError,
+        )
+
+        api = self._get_api()
+        project_id = self.get_option("troshka_project_id")
+        vm_id = self.get_option("troshka_vm_id")
+        username = self._play_context.remote_user or "cloud-user"
+        password = self._play_context.password or ""
+
+        display.vvv(
+            f"TROSHKA FETCH: {in_path} -> {out_path}",
+            host=self._play_context.remote_addr,
+        )
+
+        try:
+            api.download_file(
+                project_id,
+                vm_id,
+                in_path,
+                out_path,
+                username=username,
+                password=password,
+            )
+        except TroshkaAPIError as e:
+            raise AnsibleConnectionFailure(f"Troshka file download failed: {e}")

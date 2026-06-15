@@ -20,6 +20,7 @@ DOCUMENTATION = """
         - Builds inventory from a Troshka project's topology
         - Groups hosts by AnsibleGroup tags on VM nodes
         - Automatically configures ProxyJump through bastion host
+        - Optionally uses the Troshka API connection plugin instead of SSH
     options:
         api_url:
             description: Troshka API base URL
@@ -33,6 +34,16 @@ DOCUMENTATION = """
             description: Troshka project ID
             required: true
             type: str
+        connection_mode:
+            description: >
+                Connection mode for VMs. "ssh" (default) uses SSH with
+                ProxyJump through the bastion. "troshka" uses the Troshka
+                API connection plugin — no SSH from the controller needed.
+            type: str
+            default: ssh
+            choices:
+                - ssh
+                - troshka
 """
 
 
@@ -61,6 +72,7 @@ class InventoryModule(BaseInventoryPlugin):
             api_url = self.get_option("api_url")
             api_key = self.get_option("api_key")
             project_id = self.get_option("project_id")
+            connection_mode = self.get_option("connection_mode") or "ssh"
         except Exception as e:
             raise AnsibleError(f"Missing required configuration: {e}")
 
@@ -121,17 +133,20 @@ class InventoryModule(BaseInventoryPlugin):
 
                 break
 
-        if not bastion_node:
-            raise AnsibleError(
-                "No bastion host found in topology (no VM with 'bastions' in AnsibleGroup)"
-            )
+        if connection_mode != "troshka":
+            if not bastion_node:
+                raise AnsibleError(
+                    "No bastion host found in topology (no VM with 'bastions' in AnsibleGroup)"
+                )
 
-        if not bastion_external_ip:
-            raise AnsibleError(
-                f"Bastion VM {bastion_node.get('id')} has no external IP"
-            )
+            if not bastion_external_ip:
+                raise AnsibleError(
+                    f"Bastion VM {bastion_node.get('id')} has no external IP"
+                )
 
-        bastion_hostname = bastion_node.get("data", {}).get("name", "bastion")
+        bastion_hostname = (
+            bastion_node.get("data", {}).get("name", "bastion") if bastion_node else ""
+        )
 
         # Process all VM nodes
         for node in nodes:
@@ -177,7 +192,20 @@ class InventoryModule(BaseInventoryPlugin):
             self.inventory.set_variable(vm_name, "troshka_vm_name", vm_name)
 
             # Configure connection
-            if vm_name == bastion_hostname:
+            if connection_mode == "troshka":
+                self.inventory.set_variable(
+                    vm_name,
+                    "ansible_connection",
+                    "agnosticd.cloud_provider_troshka.troshka",
+                )
+                self.inventory.set_variable(vm_name, "troshka_api_url", api_url)
+                self.inventory.set_variable(vm_name, "troshka_api_key", api_key)
+                self.inventory.set_variable(vm_name, "troshka_project_id", project_id)
+                password = data.get("ciCloudUserPassword", "")
+                if password:
+                    self.inventory.set_variable(vm_name, "ansible_password", password)
+                self.inventory.set_variable(vm_name, "ansible_host", vm_ip)
+            elif vm_name == bastion_hostname:
                 # Bastion: use external IP
                 self.inventory.set_variable(
                     vm_name, "ansible_host", bastion_external_ip
