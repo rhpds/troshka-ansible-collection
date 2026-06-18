@@ -1,5 +1,6 @@
 ---
 # Build Ansible inventory from Troshka project topology
+# Uses the Troshka connection plugin (exec API) — no SSH or external IPs needed
 
 - name: Get project topology
   ansible.builtin.uri:
@@ -34,21 +35,9 @@
     msg: "No bastion VM found in topology (must have AnsibleGroup tag containing 'bastions')"
   when: _troshka_bastion_vm == {}
 
-- name: Extract bastion external IP
+- name: Set bastion VM ID
   ansible.builtin.set_fact:
-    _troshka_bastion_ip: >-
-      {{
-        _troshka_topology.externalIps
-        | selectattr('vmId', 'equalto', _troshka_bastion_vm.id)
-        | map(attribute='ip')
-        | first
-        | default('')
-      }}
-
-- name: Fail if bastion has no external IP
-  ansible.builtin.fail:
-    msg: "Bastion VM '{{ _troshka_bastion_vm.data.name }}' has no external IP"
-  when: _troshka_bastion_ip == ''
+    troshka_bastion_vm_id: "{{ _troshka_bastion_vm.id }}"
 
 - name: Extract bastion internal IP
   ansible.builtin.set_fact:
@@ -68,28 +57,30 @@
         | list
       }}
 
-- name: Add bastion to inventory
+- name: Add bastion to inventory (Troshka connection plugin)
   ansible.builtin.add_host:
     name: "{{ _troshka_bastion_vm.data.name }}"
-    ansible_host: "{{ _troshka_bastion_ip }}"
+    ansible_connection: agnosticd.cloud_provider_troshka.troshka
     ansible_user: "{{ ansible_user | default('cloud-user') }}"
-    ansible_ssh_private_key_file: "{{ ssh_provision_key_path | default('~/.ssh/id_rsa') }}"
-    ansible_ssh_common_args: "-o StrictHostKeyChecking=no"
-    groups: "{{ _troshka_bastion_groups }}"
+    troshka_api_url: "{{ troshka_api_url }}"
+    troshka_api_key: "{{ troshka_api_key }}"
+    troshka_project_id: "{{ troshka_project_id }}"
     troshka_vm_id: "{{ _troshka_bastion_vm.id }}"
+    groups: "{{ _troshka_bastion_groups }}"
     troshka_internal_ip: "{{ _troshka_bastion_internal_ip }}"
     troshka_is_bastion: true
 
-- name: Add inner VMs to inventory
+- name: Add inner VMs to inventory (Troshka connection plugin)
   ansible.builtin.add_host:
     name: "{{ item.data.name }}"
-    ansible_host: "{{ item.data.nics[0].ip }}"
+    ansible_connection: agnosticd.cloud_provider_troshka.troshka
     ansible_user: "{{ ansible_user | default('cloud-user') }}"
-    ansible_ssh_private_key_file: "{{ ssh_provision_key_path | default('~/.ssh/id_rsa') }}"
-    ansible_ssh_common_args: "-o StrictHostKeyChecking=no -o ProxyCommand='ssh -o StrictHostKeyChecking=no -W %h:%p -i {{ ssh_provision_key_path | default('~/.ssh/id_rsa') }} {{ ansible_user | default('cloud-user') }}@{{ _troshka_bastion_ip }}'"
-    groups: "{{ item.data.tags.AnsibleGroup | split(',') | map('trim') | list }}"
+    troshka_api_url: "{{ troshka_api_url }}"
+    troshka_api_key: "{{ troshka_api_key }}"
+    troshka_project_id: "{{ troshka_project_id }}"
     troshka_vm_id: "{{ item.id }}"
-    troshka_internal_ip: "{{ item.data.nics[0].ip }}"
+    groups: "{{ item.data.tags.AnsibleGroup | split(',') | map('trim') | list }}"
+    troshka_internal_ip: "{{ item.data.nics[0].ip | default('') }}"
     troshka_is_bastion: false
   loop: >-
     {{
@@ -106,5 +97,6 @@
   ansible.builtin.debug:
     msg:
       - "Inventory created from Troshka project {{ troshka_project_id }}"
-      - "Bastion: {{ _troshka_bastion_vm.data.name }} ({{ _troshka_bastion_ip }})"
+      - "Connection: Troshka exec API (no SSH/external IP needed)"
+      - "Bastion: {{ _troshka_bastion_vm.data.name }} ({{ _troshka_bastion_internal_ip }})"
       - "Total VMs: {{ _troshka_topology.nodes | selectattr('type', 'equalto', 'vmNode') | list | length }}"
