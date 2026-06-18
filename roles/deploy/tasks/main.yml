@@ -88,6 +88,8 @@
         body:
           template_yaml: "{{ _troshka_template_yaml }}"
           name: "{{ _troshka_project_name }}"
+          common_password: "{{ common_password | default(omit) }}"
+          auto_install_ocp: "{{ auto_install_ocp | default(true) }}"
         return_content: true
         status_code: [200, 201]
       register: _troshka_template_response
