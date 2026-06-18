@@ -72,11 +72,19 @@
   agnosticd.cloud_provider_troshka.troshka_api:
     api_url: "{{ troshka_api_url }}"
     api_key: "{{ troshka_api_key }}"
-    action: deploy_progress
+    action: get_project
     project_id: "{{ troshka_project_id }}"
-    wait: true
-    wait_timeout: "{{ troshka_deploy_poll_retries | default(240) * troshka_deploy_poll_interval | default(15) }}"
-    wait_interval: "{{ troshka_deploy_poll_interval | default(15) }}"
+  register: _troshka_deploy_wait
+  until: _troshka_deploy_wait.result.state | default('') in ['active', 'error']
+  retries: "{{ troshka_deploy_poll_retries | default(240) }}"
+  delay: "{{ troshka_deploy_poll_interval | default(15) }}"
+
+- name: Fail if deployment error
+  when:
+    - troshka_auto_deploy | default(true) | bool
+    - _troshka_deploy_wait.result.state | default('') == 'error'
+  ansible.builtin.fail:
+    msg: "Deployment failed: {{ _troshka_deploy_wait.result.deploy_error | default('unknown') }}"
 
 - name: Wait for OCP cluster readiness (auto_install_ocp only)
   when: auto_install_ocp | default(true) | bool
@@ -94,11 +102,17 @@
       agnosticd.cloud_provider_troshka.troshka_api:
         api_url: "{{ troshka_api_url }}"
         api_key: "{{ troshka_api_key }}"
-        action: deploy_progress
+        action: get_project
         project_id: "{{ troshka_project_id }}"
-        wait: true
-        wait_timeout: "{{ (troshka_ocp_poll_retries | default(120)) * (troshka_ocp_poll_interval | default(60)) }}"
-        wait_interval: "{{ troshka_ocp_poll_interval | default(60) }}"
+      register: _troshka_ocp_wait
+      until: _troshka_ocp_wait.result.ocp_status | default('') != 'monitoring'
+      retries: "{{ troshka_ocp_poll_retries | default(120) }}"
+      delay: "{{ troshka_ocp_poll_interval | default(60) }}"
+
+    - name: Fail if OCP install failed
+      when: _troshka_ocp_wait.result.ocp_status | default('') == 'error'
+      ansible.builtin.fail:
+        msg: "OCP install failed"
 
 - name: Create portal token
   agnosticd.cloud_provider_troshka.troshka_api:
