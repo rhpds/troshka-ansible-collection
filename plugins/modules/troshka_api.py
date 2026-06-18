@@ -257,7 +257,7 @@ def run_module():
                     pid,
                     target_states=["active", "error"],
                     timeout=p["wait_timeout"],
-                    interval=p["wait_interval"],
+                    poll_interval=p["wait_interval"],
                 )
                 result["result"] = resp
                 if resp.get("state") == "error":
@@ -290,7 +290,7 @@ def run_module():
                     resp["id"],
                     target_states=["available", "error"],
                     timeout=p["wait_timeout"],
-                    interval=p["wait_interval"],
+                    poll_interval=p["wait_interval"],
                 )
                 result["result"] = resp
                 if resp.get("state") == "error":
