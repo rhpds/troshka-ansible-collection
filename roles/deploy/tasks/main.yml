@@ -59,30 +59,35 @@
 - name: Deploy from template
   when: troshka_deploy_mode == 'template'
   block:
-    - name: Fail if template not specified
+    - name: Fail if template YAML sections not defined
       ansible.builtin.fail:
-        msg: "troshka_template is required for template deployment mode"
-      when: troshka_template is not defined
+        msg: "vms and networks are required for template deployment (from infra_template.yaml)"
+      when: vms is not defined or networks is not defined
 
-    - name: Fail if template version not specified
-      ansible.builtin.fail:
-        msg: "troshka_template_version is required for template deployment mode"
-      when: troshka_template_version is not defined
+    - name: Build template YAML from agnosticv variables
+      ansible.builtin.set_fact:
+        _troshka_template_yaml:
+          name: "{{ ocp.cluster_name | default('ocp') }}"
+          install_method: "{{ install_method | default('agent') }}"
+          networks: "{{ networks }}"
+          gateway: "{{ gateway | default({}) }}"
+          vms: "{{ vms }}"
+          ocp: "{{ ocp | default(omit) }}"
+          dns_records: "{{ dns_records | default(omit) }}"
+          disconnected: "{{ disconnected | default(omit) }}"
+          bastion_services: "{{ bastion_services | default(omit) }}"
 
-    - name: Deploy template
+    - name: Deploy template to Troshka
       ansible.builtin.uri:
-        url: "{{ troshka_api_url }}/api/v1/deploy-template"
+        url: "{{ troshka_api_url }}/api/v1/projects/from-template"
         method: POST
         headers:
           Authorization: "Bearer {{ troshka_api_key }}"
           Content-Type: "application/json"
         body_format: json
         body:
-          template: "{{ troshka_template }}"
-          version: "{{ troshka_template_version }}"
+          template_yaml: "{{ _troshka_template_yaml }}"
           name: "{{ _troshka_project_name }}"
-          overrides: "{{ troshka_template_overrides }}"
-          auto_deploy: false
         return_content: true
         status_code: [200, 201]
       register: _troshka_template_response
@@ -92,11 +97,28 @@
       ansible.builtin.set_fact:
         troshka_project_id: "{{ _troshka_template_response.json.id }}"
 
+- name: Trigger deployment
+  when: troshka_auto_deploy | default(true) | bool
+  ansible.builtin.uri:
+    url: "{{ troshka_api_url }}/api/v1/projects/{{ troshka_project_id }}/deploy"
+    method: POST
+    headers:
+      Authorization: "Bearer {{ troshka_api_key }}"
+      Content-Type: "application/json"
+    body_format: json
+    body: {}
+    return_content: true
+    status_code: [200, 202, 409]
+  register: _troshka_deploy_trigger
+  no_log: true
+
 - name: Waiting for deployment to complete
   ansible.builtin.debug:
     msg: "Project {{ troshka_project_id }} is deploying — polling every {{ troshka_deploy_poll_interval }}s..."
+  when: troshka_auto_deploy | default(true) | bool
 
 - name: Poll deployment progress
+  when: troshka_auto_deploy | default(true) | bool
   ansible.builtin.uri:
     url: "{{ troshka_api_url }}/api/v1/projects/{{ troshka_project_id }}/deploy-progress"
     method: GET
