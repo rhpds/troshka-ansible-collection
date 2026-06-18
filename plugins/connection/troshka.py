@@ -130,6 +130,16 @@ class Connection(ConnectionBase):
         password = self._play_context.password or ""
         timeout = self.get_option("troshka_timeout")
 
+        # Read SSH private key if available
+        private_key = ""
+        key_path = self._play_context.private_key_file
+        if key_path:
+            try:
+                with open(os.path.expanduser(key_path)) as f:
+                    private_key = f.read()
+            except (OSError, IOError):
+                display.vvv(f"Could not read SSH key: {key_path}")
+
         if sudoable and self._play_context.become:
             become_cmd = self._play_context.become_method or "sudo"
             become_user = self._play_context.become_user or "root"
@@ -147,6 +157,7 @@ class Connection(ConnectionBase):
                 cmd,
                 username=username,
                 password=password,
+                private_key=private_key,
                 timeout=timeout,
             )
         except TroshkaAPIError as e:

@@ -356,6 +356,7 @@ class TroshkaAPI:
         command,
         username="cloud-user",
         password="",
+        private_key="",
         timeout=30,
         use_ssh=True,
     ):
@@ -370,6 +371,8 @@ class TroshkaAPI:
             "timeout": timeout,
             "use_ssh": use_ssh,
         }
+        if private_key:
+            body["private_key"] = private_key
         if password:
             body["password"] = password
         return self._request(

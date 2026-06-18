@@ -62,6 +62,8 @@
     name: "{{ _troshka_bastion_vm.data.name }}"
     ansible_connection: agnosticd.cloud_provider_troshka.troshka
     ansible_user: "{{ ansible_user | default('cloud-user') }}"
+    ansible_password: "{{ common_password | default(omit) }}"
+    ansible_ssh_private_key_file: "{{ ssh_provision_key_path | default(omit) }}"
     troshka_api_url: "{{ troshka_api_url }}"
     troshka_api_key: "{{ troshka_api_key }}"
     troshka_project_id: "{{ troshka_project_id }}"

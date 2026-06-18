@@ -90,6 +90,7 @@
           name: "{{ _troshka_project_name }}"
           common_password: "{{ common_password | default(omit) }}"
           auto_install_ocp: "{{ auto_install_ocp | default(true) }}"
+          ssh_pub_key: "{{ ssh_provision_pubkey_content | default(omit) }}"
         return_content: true
         status_code: [200, 201]
       register: _troshka_template_response
