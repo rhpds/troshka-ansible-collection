@@ -8,53 +8,19 @@
 - name: Deploy from pattern
   when: troshka_deploy_mode in ['pattern', 'pattern_workloads']
   block:
-    - name: Look up pattern by name
-      when: troshka_pattern_id is not defined
-      block:
-        - name: Query patterns API
-          ansible.builtin.uri:
-            url: "{{ troshka_api_url }}/api/v1/patterns/?name={{ troshka_pattern_name | urlencode }}"
-            method: GET
-            headers:
-              Authorization: "Bearer {{ troshka_api_key }}"
-              Content-Type: "application/json"
-            return_content: true
-            status_code: 200
-          register: _troshka_pattern_lookup
-          no_log: true
-
-        - name: Fail if pattern not found
-          ansible.builtin.fail:
-            msg: "Pattern '{{ troshka_pattern_name }}' not found"
-          when: _troshka_pattern_lookup.json | length == 0
-
-        - name: Extract pattern ID
-          ansible.builtin.set_fact:
-            troshka_pattern_id: "{{ _troshka_pattern_lookup.json[0].id }}"
-
     - name: Deploy pattern
-      ansible.builtin.uri:
-        url: "{{ troshka_api_url }}/api/v1/patterns/{{ troshka_pattern_id }}/deploy"
-        method: POST
-        headers:
-          Authorization: "Bearer {{ troshka_api_key }}"
-          Content-Type: "application/json"
-        body_format: json
-        body:
-          name: "{{ _troshka_project_name }}"
-          inject_vars: "{{ troshka_inject_vars }}"
-          auto_deploy: "{{ troshka_auto_deploy }}"
-          auto_start: "{{ troshka_auto_start }}"
-          guid: "{{ guid | default(omit) }}"
-          workloads_only: "{{ true if troshka_deploy_mode == 'pattern_workloads' else omit }}"
-        return_content: true
-        status_code: [200, 201]
-      register: _troshka_deploy_response
-      no_log: true
+      agnosticd.cloud_provider_troshka.troshka_api:
+        api_url: "{{ troshka_api_url }}"
+        api_key: "{{ troshka_api_key }}"
+        action: deploy_pattern
+        pattern_name: "{{ troshka_pattern_name | default(omit) }}"
+        pattern_id: "{{ troshka_pattern_id | default(omit) }}"
+        project_name: "{{ _troshka_project_name }}"
+      register: _troshka_deploy
 
     - name: Set project ID
       ansible.builtin.set_fact:
-        troshka_project_id: "{{ _troshka_deploy_response.json.id }}"
+        troshka_project_id: "{{ _troshka_deploy.project_id }}"
 
 - name: Deploy from template
   when: troshka_deploy_mode == 'template'
@@ -77,145 +43,84 @@
           disconnected: "{{ disconnected | default(omit) }}"
           bastion_services: "{{ bastion_services | default(omit) }}"
 
-    - name: Deploy template to Troshka
-      ansible.builtin.uri:
-        url: "{{ troshka_api_url }}/api/v1/projects/from-template"
-        method: POST
-        headers:
-          Authorization: "Bearer {{ troshka_api_key }}"
-          Content-Type: "application/json"
-        body_format: json
-        body:
-          template_yaml: "{{ _troshka_template_yaml }}"
-          name: "{{ _troshka_project_name }}"
-          common_password: "{{ common_password | default(omit) }}"
-          auto_install_ocp: "{{ auto_install_ocp | default(true) }}"
-          ssh_pub_key: "{{ ssh_provision_pubkey_content | default(omit) }}"
-        return_content: true
-        status_code: [200, 201]
-      register: _troshka_template_response
-      no_log: true
+    - name: Deploy template
+      agnosticd.cloud_provider_troshka.troshka_api:
+        api_url: "{{ troshka_api_url }}"
+        api_key: "{{ troshka_api_key }}"
+        action: deploy_template
+        template_yaml: "{{ _troshka_template_yaml }}"
+        project_name: "{{ _troshka_project_name }}"
+        common_password: "{{ common_password | default(omit) }}"
+        auto_install_ocp: "{{ auto_install_ocp | default(true) }}"
+        ssh_pub_key: "{{ ssh_provision_pubkey_content | default(omit) }}"
+      register: _troshka_deploy
 
     - name: Set project ID
       ansible.builtin.set_fact:
-        troshka_project_id: "{{ _troshka_template_response.json.id }}"
+        troshka_project_id: "{{ _troshka_deploy.project_id }}"
 
 - name: Trigger deployment
   when: troshka_auto_deploy | default(true) | bool
-  ansible.builtin.uri:
-    url: "{{ troshka_api_url }}/api/v1/projects/{{ troshka_project_id }}/deploy"
-    method: POST
-    headers:
-      Authorization: "Bearer {{ troshka_api_key }}"
-      Content-Type: "application/json"
-    body_format: json
-    body: {}
-    return_content: true
-    status_code: [200, 202, 409]
-  register: _troshka_deploy_trigger
-  no_log: true
+  agnosticd.cloud_provider_troshka.troshka_api:
+    api_url: "{{ troshka_api_url }}"
+    api_key: "{{ troshka_api_key }}"
+    action: trigger_deploy
+    project_id: "{{ troshka_project_id }}"
 
-- name: Waiting for deployment to complete
-  ansible.builtin.debug:
-    msg: "Project {{ troshka_project_id }} is deploying — polling every {{ troshka_deploy_poll_interval }}s..."
+- name: Wait for deployment to complete
   when: troshka_auto_deploy | default(true) | bool
-
-- name: Poll deployment progress
-  when: troshka_auto_deploy | default(true) | bool
-  ansible.builtin.uri:
-    url: "{{ troshka_api_url }}/api/v1/projects/{{ troshka_project_id }}/deploy-progress"
-    method: GET
-    headers:
-      Authorization: "Bearer {{ troshka_api_key }}"
-      Content-Type: "application/json"
-    status_code: 200
-  register: _troshka_progress
-  until: _troshka_progress.json.state in ['active', 'error']
-  retries: "{{ troshka_deploy_poll_retries }}"
-  delay: "{{ troshka_deploy_poll_interval }}"
-  no_log: true
-
-- name: Fail if deployment error
-  ansible.builtin.fail:
-    msg: "Deployment failed: {{ _troshka_progress.json.error_message | default('Unknown error') }}"
-  when: _troshka_progress.json.state == 'error'
+  agnosticd.cloud_provider_troshka.troshka_api:
+    api_url: "{{ troshka_api_url }}"
+    api_key: "{{ troshka_api_key }}"
+    action: deploy_progress
+    project_id: "{{ troshka_project_id }}"
+    wait: true
+    wait_timeout: "{{ troshka_deploy_poll_retries | default(240) * troshka_deploy_poll_interval | default(15) }}"
+    wait_interval: "{{ troshka_deploy_poll_interval | default(15) }}"
 
 - name: Wait for OCP cluster readiness (auto_install_ocp only)
   when: auto_install_ocp | default(true) | bool
   block:
-    - name: Check if project has OCP status to monitor
-      ansible.builtin.uri:
-        url: "{{ troshka_api_url }}/api/v1/projects/{{ troshka_project_id }}"
-        method: GET
-        headers:
-          Authorization: "Bearer {{ troshka_api_key }}"
-        return_content: true
-        status_code: 200
+    - name: Get project OCP status
+      agnosticd.cloud_provider_troshka.troshka_api:
+        api_url: "{{ troshka_api_url }}"
+        api_key: "{{ troshka_api_key }}"
+        action: get_project
+        project_id: "{{ troshka_project_id }}"
       register: _troshka_project_status
-      no_log: true
-
-    - name: Waiting for OCP cluster readiness (this may take 15-30 minutes)
-      ansible.builtin.debug:
-        msg: "OCP status is 'monitoring' — polling until cluster is ready..."
-      when: _troshka_project_status.json.ocp_status | default('') == 'monitoring'
 
     - name: Wait for OCP cluster readiness
-      ansible.builtin.uri:
-        url: "{{ troshka_api_url }}/api/v1/projects/{{ troshka_project_id }}"
-        method: GET
-        headers:
-          Authorization: "Bearer {{ troshka_api_key }}"
-        status_code: 200
-      register: _troshka_ocp_wait
-      until: _troshka_ocp_wait.json.ocp_status | default('') != 'monitoring'
-      retries: "{{ troshka_ocp_poll_retries }}"
-      delay: "{{ troshka_ocp_poll_interval }}"
-      when: _troshka_project_status.json.ocp_status | default('') == 'monitoring'
-  no_log: true
+      when: _troshka_project_status.result.ocp_status | default('') == 'monitoring'
+      agnosticd.cloud_provider_troshka.troshka_api:
+        api_url: "{{ troshka_api_url }}"
+        api_key: "{{ troshka_api_key }}"
+        action: deploy_progress
+        project_id: "{{ troshka_project_id }}"
+        wait: true
+        wait_timeout: "{{ (troshka_ocp_poll_retries | default(120)) * (troshka_ocp_poll_interval | default(60)) }}"
+        wait_interval: "{{ troshka_ocp_poll_interval | default(60) }}"
 
 - name: Create portal token
-  ansible.builtin.uri:
-    url: "{{ troshka_api_url }}/api/v1/projects/{{ troshka_project_id }}/portal-token"
-    method: POST
-    headers:
-      Authorization: "Bearer {{ troshka_api_key }}"
-      Content-Type: "application/json"
-    body_format: json
-    body:
-      access_level: "{{ troshka_portal_access_level }}"
-    return_content: true
-    status_code: [200, 201]
+  agnosticd.cloud_provider_troshka.troshka_api:
+    api_url: "{{ troshka_api_url }}"
+    api_key: "{{ troshka_api_key }}"
+    action: create_portal_token
+    project_id: "{{ troshka_project_id }}"
+    portal_access_level: "{{ troshka_portal_access_level }}"
   register: _troshka_portal_token
-  no_log: true
 
-- name: Get project details for bastion IP
-  ansible.builtin.uri:
-    url: "{{ troshka_api_url }}/api/v1/projects/{{ troshka_project_id }}"
-    method: GET
-    headers:
-      Authorization: "Bearer {{ troshka_api_key }}"
-      Content-Type: "application/json"
-    return_content: true
-    status_code: 200
+- name: Get project details
+  agnosticd.cloud_provider_troshka.troshka_api:
+    api_url: "{{ troshka_api_url }}"
+    api_key: "{{ troshka_api_key }}"
+    action: get_project
+    project_id: "{{ troshka_project_id }}"
   register: _troshka_project
-  no_log: true
-
-- name: Extract bastion external IP
-  ansible.builtin.set_fact:
-    _troshka_bastion_external_ip: >-
-      {{
-        _troshka_project.json.topology.externalIps
-        | selectattr('type', 'equalto', 'bastion')
-        | map(attribute='ip')
-        | first
-        | default('')
-      }}
 
 - name: Set output facts
   ansible.builtin.set_fact:
     troshka_project_id: "{{ troshka_project_id }}"
-    troshka_portal_url: "{{ _troshka_portal_token.json.portal_url }}"
-    troshka_showroom_url: "https://{{ _troshka_bastion_external_ip }}"
+    troshka_portal_url: "{{ _troshka_portal_token.result.portal_url }}"
 
 - name: Display deployment summary
   ansible.builtin.debug:
@@ -223,4 +128,3 @@
       - "Deployment complete"
       - "Project ID: {{ troshka_project_id }}"
       - "Portal URL: {{ troshka_portal_url }}"
-      - "Showroom URL: {{ troshka_showroom_url }}"

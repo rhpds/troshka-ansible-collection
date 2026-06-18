@@ -6,55 +6,28 @@
       - troshka_capture_pattern_name | length > 0
     fail_msg: "troshka_capture_pattern_name must be defined and non-empty"
 
-- name: Create pattern from project
-  ansible.builtin.uri:
-    url: "{{ troshka_api_url }}/api/v1/patterns/"
-    method: POST
-    headers:
-      Authorization: "Bearer {{ troshka_api_key }}"
-      Content-Type: "application/json"
-    body_format: json
-    body:
-      name: "{{ troshka_capture_pattern_name }}"
-      source_project_id: "{{ troshka_project_id }}"
-      visibility: "{{ troshka_capture_visibility }}"
-    status_code: [200, 201]
-  register: pattern_create_response
-  no_log: true
-
-- name: Set pattern ID
-  ansible.builtin.set_fact:
-    _troshka_pattern_id: "{{ pattern_create_response.json.id }}"
-
-- name: Wait for pattern capture to complete
-  ansible.builtin.uri:
-    url: "{{ troshka_api_url }}/api/v1/patterns/{{ _troshka_pattern_id }}"
-    method: GET
-    headers:
-      Authorization: "Bearer {{ troshka_api_key }}"
-    status_code: 200
-  register: pattern_status
-  until: pattern_status.json.state in ["available", "error"]
-  retries: 120
-  delay: 15
-  no_log: true
-
-- name: Fail if pattern capture errored
-  ansible.builtin.fail:
-    msg: "Pattern capture failed with state: {{ pattern_status.json.state }}"
-  when: pattern_status.json.state == "error"
+- name: Capture pattern from project
+  agnosticd.cloud_provider_troshka.troshka_api:
+    api_url: "{{ troshka_api_url }}"
+    api_key: "{{ troshka_api_key }}"
+    action: capture_pattern
+    project_id: "{{ troshka_project_id }}"
+    capture_name: "{{ troshka_capture_pattern_name }}"
+    capture_visibility: "{{ troshka_capture_visibility }}"
+    wait: true
+    wait_timeout: 1800
+    wait_interval: 15
+  register: _capture_result
 
 - name: Set pattern facts
   ansible.builtin.set_fact:
-    troshka_captured_pattern_id: "{{ _troshka_pattern_id }}"
+    troshka_captured_pattern_id: "{{ _capture_result.pattern_id }}"
     troshka_captured_pattern_name: "{{ troshka_capture_pattern_name }}"
 
 - name: Delete source project after capture
-  ansible.builtin.uri:
-    url: "{{ troshka_api_url }}/api/v1/projects/{{ troshka_project_id }}"
-    method: DELETE
-    headers:
-      Authorization: "Bearer {{ troshka_api_key }}"
-    status_code: [204, 404]
   when: troshka_delete_after_capture | bool
-  no_log: true
+  agnosticd.cloud_provider_troshka.troshka_api:
+    api_url: "{{ troshka_api_url }}"
+    api_key: "{{ troshka_api_key }}"
+    action: delete_project
+    project_id: "{{ troshka_project_id }}"

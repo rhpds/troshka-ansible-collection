@@ -3,20 +3,16 @@
 # Uses the Troshka connection plugin (exec API) — no SSH or external IPs needed
 
 - name: Get project topology
-  ansible.builtin.uri:
-    url: "{{ troshka_api_url }}/api/v1/projects/{{ troshka_project_id }}"
-    method: GET
-    headers:
-      Authorization: "Bearer {{ troshka_api_key }}"
-      Content-Type: "application/json"
-    return_content: true
-    status_code: 200
-  register: _troshka_project
-  no_log: true
+  agnosticd.cloud_provider_troshka.troshka_api:
+    api_url: "{{ troshka_api_url }}"
+    api_key: "{{ troshka_api_key }}"
+    action: get_topology
+    project_id: "{{ troshka_project_id }}"
+  register: _troshka_topo_result
 
 - name: Extract topology
   ansible.builtin.set_fact:
-    _troshka_topology: "{{ _troshka_project.json.topology }}"
+    _troshka_topology: "{{ _troshka_topo_result.result }}"
 
 - name: Find bastion VM
   ansible.builtin.set_fact:

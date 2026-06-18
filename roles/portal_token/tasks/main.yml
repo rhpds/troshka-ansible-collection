@@ -1,21 +1,16 @@
 ---
-- name: Create portal token for project
-  ansible.builtin.uri:
-    url: "{{ troshka_api_url }}/api/v1/projects/{{ troshka_project_id }}/portal-token"
-    method: POST
-    headers:
-      Authorization: "Bearer {{ troshka_api_key }}"
-      Content-Type: "application/json"
-    body_format: json
-    body:
-      access_level: "{{ troshka_portal_access_level | default('console') }}"
-    status_code: [200, 201]
-  register: portal_token_response
-  no_log: true
+- name: Create portal token
+  agnosticd.cloud_provider_troshka.troshka_api:
+    api_url: "{{ troshka_api_url }}"
+    api_key: "{{ troshka_api_key }}"
+    action: create_portal_token
+    project_id: "{{ troshka_project_id }}"
+    portal_access_level: "{{ troshka_portal_access_level | default('console') }}"
+  register: _portal_result
 
 - name: Set portal URL fact
   ansible.builtin.set_fact:
-    troshka_portal_url: "{{ portal_token_response.json.portal_url }}"
+    troshka_portal_url: "{{ _portal_result.result.portal_url }}"
 
 - name: Display portal URL
   ansible.builtin.debug:

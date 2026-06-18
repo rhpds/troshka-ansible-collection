@@ -137,8 +137,11 @@ class Connection(ConnectionBase):
             try:
                 with open(os.path.expanduser(key_path)) as f:
                     private_key = f.read()
+                display.vvv(
+                    "TROSHKA: using SSH key auth", host=self._play_context.remote_addr
+                )
             except (OSError, IOError):
-                display.vvv(f"Could not read SSH key: {key_path}")
+                display.warning(f"Could not read SSH key: {key_path}")
 
         if sudoable and self._play_context.become:
             become_cmd = self._play_context.become_method or "sudo"
@@ -148,7 +151,14 @@ class Connection(ConnectionBase):
             else:
                 cmd = f"{become_cmd} -u {become_user} {cmd}"
 
-        display.vvv(f"TROSHKA EXEC: {cmd}", host=self._play_context.remote_addr)
+        log_cmd = (
+            cmd
+            if not self._play_context.become_pass
+            else cmd.split("|", 1)[-1].strip()
+            if "|" in cmd
+            else cmd
+        )
+        display.vvv(f"TROSHKA EXEC: {log_cmd}", host=self._play_context.remote_addr)
 
         try:
             result = api.exec_command(

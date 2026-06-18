@@ -2,122 +2,62 @@
 - name: Start Troshka project
   when: ACTION == "start"
   block:
-    - name: Send start request
-      ansible.builtin.uri:
-        url: "{{ troshka_api_url }}/api/v1/projects/{{ troshka_project_id }}/start"
-        method: POST
-        headers:
-          Authorization: "Bearer {{ troshka_api_key }}"
-          Content-Type: "application/json"
-        status_code: [200, 202, 409]
-      register: _start_resp
-      no_log: true
-
-    - name: Project already running
-      ansible.builtin.debug:
-        msg: "Project is already active"
-      when: _start_resp.status == 409
+    - name: Start project
+      agnosticd.cloud_provider_troshka.troshka_api:
+        api_url: "{{ troshka_api_url }}"
+        api_key: "{{ troshka_api_key }}"
+        action: start_project
+        project_id: "{{ troshka_project_id }}"
+      register: _start_result
+      ignore_errors: true
 
     - name: Wait for project to become active
-      ansible.builtin.uri:
-        url: "{{ troshka_api_url }}/api/v1/projects/{{ troshka_project_id }}"
-        method: GET
-        headers:
-          Authorization: "Bearer {{ troshka_api_key }}"
-        status_code: 200
-      register: project_status
-      until: project_status.json.state == "active"
-      retries: 60
-      delay: 10
-      no_log: true
-      when: _start_resp.status != 409
+      agnosticd.cloud_provider_troshka.troshka_api:
+        api_url: "{{ troshka_api_url }}"
+        api_key: "{{ troshka_api_key }}"
+        action: deploy_progress
+        project_id: "{{ troshka_project_id }}"
+        wait: true
+        wait_timeout: 600
+        wait_interval: 10
 
 - name: Stop Troshka project
   when: ACTION == "stop"
   block:
-    - name: Send stop request
-      ansible.builtin.uri:
-        url: "{{ troshka_api_url }}/api/v1/projects/{{ troshka_project_id }}/stop"
-        method: POST
-        headers:
-          Authorization: "Bearer {{ troshka_api_key }}"
-          Content-Type: "application/json"
-        status_code: [200, 202, 409]
-      register: _stop_resp
-      no_log: true
-
-    - name: Project already stopped
-      ansible.builtin.debug:
-        msg: "Project is already stopped"
-      when: _stop_resp.status == 409
+    - name: Stop project
+      agnosticd.cloud_provider_troshka.troshka_api:
+        api_url: "{{ troshka_api_url }}"
+        api_key: "{{ troshka_api_key }}"
+        action: stop_project
+        project_id: "{{ troshka_project_id }}"
+      register: _stop_result
+      ignore_errors: true
 
     - name: Wait for project to stop
-      ansible.builtin.uri:
-        url: "{{ troshka_api_url }}/api/v1/projects/{{ troshka_project_id }}"
-        method: GET
-        headers:
-          Authorization: "Bearer {{ troshka_api_key }}"
-        status_code: 200
-      register: project_status
-      until: project_status.json.state == "stopped"
+      agnosticd.cloud_provider_troshka.troshka_api:
+        api_url: "{{ troshka_api_url }}"
+        api_key: "{{ troshka_api_key }}"
+        action: get_project
+        project_id: "{{ troshka_project_id }}"
+      register: _project_state
+      until: _project_state.result.state | default('') == 'stopped'
       retries: 30
       delay: 10
-      no_log: true
-      when: _stop_resp.status != 409
 
 - name: Get Troshka project status
   when: ACTION == "status"
   block:
-    - name: Retrieve project state
-      ansible.builtin.uri:
-        url: "{{ troshka_api_url }}/api/v1/projects/{{ troshka_project_id }}"
-        method: GET
-        headers:
-          Authorization: "Bearer {{ troshka_api_key }}"
-        status_code: 200
-      register: project_info
-      no_log: true
-
-    - name: Retrieve VM states
-      ansible.builtin.uri:
-        url: "{{ troshka_api_url }}/api/v1/projects/{{ troshka_project_id }}/vm-states"
-        method: GET
-        headers:
-          Authorization: "Bearer {{ troshka_api_key }}"
-        status_code: 200
-      register: vm_states_resp
-      no_log: true
-      when: project_info.json.state in ['active', 'stopped']
-
-    - name: Build VM name map
-      ansible.builtin.set_fact:
-        _vm_names: >-
-          {{ dict(
-               (project_info.json.topology or {}).get('nodes', [])
-               | selectattr('type', 'equalto', 'vmNode')
-               | map('dict2items')
-               | map('selectattr', 'key', 'in', ['id', 'data'])
-               | list
-               | map('items2dict')
-               | list
-               | map('combine', {})
-               | list
-               | json_query('[].{key: id, value: data.name}')
-             )
-          }}
-      no_log: true
-      ignore_errors: true
+    - name: Get project
+      agnosticd.cloud_provider_troshka.troshka_api:
+        api_url: "{{ troshka_api_url }}"
+        api_key: "{{ troshka_api_key }}"
+        action: get_project
+        project_id: "{{ troshka_project_id }}"
+      register: _project_info
 
     - name: Display project status
-      vars:
-        _states: "{{ vm_states_resp.json.states | default({}) if vm_states_resp is defined else {} }}"
-        _nodes: "{{ (project_info.json.topology or {}).get('nodes', []) | selectattr('type', 'equalto', 'vmNode') | list }}"
       ansible.builtin.debug:
         msg: |
-          Project: {{ project_info.json.name }} ({{ troshka_project_id[:8] }})
-          State:   {{ project_info.json.state }}
-          OCP:     {{ project_info.json.ocp_status | default('n/a') }}
-          VMs:
-          {% for node in _nodes %}
-            {{ node.data.name | default(node.id[:8]) }}: {{ _states[node.id] | default('unknown') }}
-          {% endfor %}
+          Project: {{ _project_info.result.name }} ({{ troshka_project_id[:8] }})
+          State:   {{ _project_info.result.state }}
+          OCP:     {{ _project_info.result.ocp_status | default('n/a') }}
