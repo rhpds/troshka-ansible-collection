@@ -218,6 +218,19 @@ class TroshkaAPI:
         """
         return self._request("POST", f"/api/v1/projects/{project_id}/stop")
 
+    def trigger_deploy(self, project_id):
+        return self._request("POST", f"/api/v1/projects/{project_id}/deploy", {})
+
+    def create_from_template(self, template_yaml, name="", **kwargs):
+        body = {"template_yaml": template_yaml, "name": name}
+        for k in ("common_password", "auto_install_ocp", "ssh_pub_key"):
+            if kwargs.get(k) is not None:
+                body[k] = kwargs[k]
+        return self._request("POST", "/api/v1/projects/from-template", body)
+
+    def vm_ready(self, project_id, vm_id):
+        return self._request("GET", f"/api/v1/projects/{project_id}/vms/{vm_id}/ready")
+
     def get_deploy_progress(self, project_id):
         """
         Get deployment progress for a project.

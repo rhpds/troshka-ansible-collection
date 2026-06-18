@@ -1,9 +1,9 @@
-namespace: agnosticd
-name: cloud_provider_troshka
-version: 0.1.0
+namespace: troshka
+name: cloud
+version: 1.0.0
 authors:
   - Troshka Team
-description: AgnosticD V2 Cloud Provider Collection for Troshka nested VM environments
+description: Ansible modules for managing Troshka nested VM environments
 license:
   - GPL-2.0-or-later
 tags:
@@ -11,6 +11,7 @@ tags:
   - troshka
   - nested
   - virtualization
+  - openshift
 readme: README.md
 dependencies: {}
 repository: https://github.com/rhpds/troshka-ansible-collection

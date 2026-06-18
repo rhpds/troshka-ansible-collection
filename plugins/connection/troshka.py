@@ -8,7 +8,7 @@ from the Ansible controller.
 Usage in inventory::
 
     bastion:
-      ansible_connection: agnosticd.cloud_provider_troshka.troshka
+      ansible_connection: troshka.cloud.troshka
       troshka_api_url: https://troshka.example.com
       troshka_api_key: trk_...
       troshka_project_id: <project-uuid>
@@ -76,7 +76,7 @@ DOCUMENTATION = """
 class Connection(ConnectionBase):
     """Troshka API-based connection plugin."""
 
-    transport = "agnosticd.cloud_provider_troshka.troshka"
+    transport = "troshka.cloud.troshka"
     has_pipelining = False
     has_tty = False
 
@@ -88,7 +88,7 @@ class Connection(ConnectionBase):
         if self._api is not None:
             return self._api
 
-        from ansible_collections.agnosticd.cloud_provider_troshka.plugins.module_utils.troshka_api import (
+        from ansible_collections.troshka.cloud.plugins.module_utils.troshka_api import (
             TroshkaAPI,
             TroshkaAPIError,
         )
@@ -119,7 +119,7 @@ class Connection(ConnectionBase):
     def exec_command(self, cmd, in_data=None, sudoable=True):
         super().exec_command(cmd, in_data=in_data, sudoable=sudoable)
 
-        from ansible_collections.agnosticd.cloud_provider_troshka.plugins.module_utils.troshka_api import (
+        from ansible_collections.troshka.cloud.plugins.module_utils.troshka_api import (
             TroshkaAPIError,
         )
 
@@ -185,7 +185,7 @@ class Connection(ConnectionBase):
     def put_file(self, in_path, out_path):
         super().put_file(in_path, out_path)
 
-        from ansible_collections.agnosticd.cloud_provider_troshka.plugins.module_utils.troshka_api import (
+        from ansible_collections.troshka.cloud.plugins.module_utils.troshka_api import (
             TroshkaAPIError,
         )
 
@@ -218,7 +218,7 @@ class Connection(ConnectionBase):
     def fetch_file(self, in_path, out_path):
         super().fetch_file(in_path, out_path)
 
-        from ansible_collections.agnosticd.cloud_provider_troshka.plugins.module_utils.troshka_api import (
+        from ansible_collections.troshka.cloud.plugins.module_utils.troshka_api import (
             TroshkaAPIError,
         )
 

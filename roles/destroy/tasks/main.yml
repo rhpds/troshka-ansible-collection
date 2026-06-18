@@ -1,8 +1,0 @@
----
-- name: Delete Troshka project
-  agnosticd.cloud_provider_troshka.troshka_api:
-    api_url: "{{ troshka_api_url }}"
-    api_key: "{{ troshka_api_key }}"
-    action: delete_project
-    project_id: "{{ troshka_project_id }}"
-  when: troshka_project_id is defined and troshka_project_id | length > 0
