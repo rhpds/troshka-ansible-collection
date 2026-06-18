@@ -70,6 +70,19 @@ DOCUMENTATION = """
             default: 30
             vars:
                 - name: troshka_timeout
+        private_key_file:
+            description: Path to SSH private key file
+            type: str
+            vars:
+                - name: ansible_ssh_private_key_file
+                - name: ansible_private_key_file
+        remote_password:
+            description: SSH password (fallback if no key)
+            type: str
+            no_log: true
+            vars:
+                - name: ansible_password
+                - name: ansible_ssh_pass
 """
 
 
@@ -127,12 +140,16 @@ class Connection(ConnectionBase):
         project_id = self.get_option("troshka_project_id")
         vm_id = self.get_option("troshka_vm_id")
         username = self._play_context.remote_user or "cloud-user"
-        password = self._play_context.password or ""
+        password = (
+            self.get_option("remote_password") or self._play_context.password or ""
+        )
         timeout = self.get_option("troshka_timeout")
 
-        # Read SSH private key if available
+        # Read SSH private key
         private_key = ""
-        key_path = self._play_context.private_key_file
+        key_path = (
+            self.get_option("private_key_file") or self._play_context.private_key_file
+        )
         if key_path:
             try:
                 with open(os.path.expanduser(key_path)) as f:

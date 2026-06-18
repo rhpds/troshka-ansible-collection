@@ -371,9 +371,12 @@ class TroshkaAPI:
         password="",
         private_key="",
         timeout=30,
-        use_ssh=True,
+        method="ssh",
     ):
         """Execute a command on a VM.
+
+        Args:
+            method: "ssh", "serial", or "auto"
 
         Returns:
             Dict with keys: output, error, exit_code
@@ -382,7 +385,7 @@ class TroshkaAPI:
             "command": command,
             "username": username,
             "timeout": timeout,
-            "use_ssh": use_ssh,
+            "method": method,
         }
         if private_key:
             body["private_key"] = private_key
