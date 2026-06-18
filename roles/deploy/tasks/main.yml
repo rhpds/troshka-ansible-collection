@@ -139,34 +139,37 @@
     msg: "Deployment failed: {{ _troshka_progress.json.error_message | default('Unknown error') }}"
   when: _troshka_progress.json.state == 'error'
 
-- name: Check if project has OCP status to monitor
-  ansible.builtin.uri:
-    url: "{{ troshka_api_url }}/api/v1/projects/{{ troshka_project_id }}"
-    method: GET
-    headers:
-      Authorization: "Bearer {{ troshka_api_key }}"
-    return_content: true
-    status_code: 200
-  register: _troshka_project_status
-  no_log: true
+- name: Wait for OCP cluster readiness (auto_install_ocp only)
+  when: auto_install_ocp | default(true) | bool
+  block:
+    - name: Check if project has OCP status to monitor
+      ansible.builtin.uri:
+        url: "{{ troshka_api_url }}/api/v1/projects/{{ troshka_project_id }}"
+        method: GET
+        headers:
+          Authorization: "Bearer {{ troshka_api_key }}"
+        return_content: true
+        status_code: 200
+      register: _troshka_project_status
+      no_log: true
 
-- name: Waiting for OCP cluster readiness (this may take 15-30 minutes)
-  ansible.builtin.debug:
-    msg: "OCP status is 'monitoring' — polling until cluster is ready..."
-  when: _troshka_project_status.json.ocp_status | default('') == 'monitoring'
+    - name: Waiting for OCP cluster readiness (this may take 15-30 minutes)
+      ansible.builtin.debug:
+        msg: "OCP status is 'monitoring' — polling until cluster is ready..."
+      when: _troshka_project_status.json.ocp_status | default('') == 'monitoring'
 
-- name: Wait for OCP cluster readiness
-  ansible.builtin.uri:
-    url: "{{ troshka_api_url }}/api/v1/projects/{{ troshka_project_id }}"
-    method: GET
-    headers:
-      Authorization: "Bearer {{ troshka_api_key }}"
-    status_code: 200
-  register: _troshka_ocp_wait
-  until: _troshka_ocp_wait.json.ocp_status | default('') != 'monitoring'
-  retries: "{{ troshka_ocp_poll_retries }}"
-  delay: "{{ troshka_ocp_poll_interval }}"
-  when: _troshka_project_status.json.ocp_status | default('') == 'monitoring'
+    - name: Wait for OCP cluster readiness
+      ansible.builtin.uri:
+        url: "{{ troshka_api_url }}/api/v1/projects/{{ troshka_project_id }}"
+        method: GET
+        headers:
+          Authorization: "Bearer {{ troshka_api_key }}"
+        status_code: 200
+      register: _troshka_ocp_wait
+      until: _troshka_ocp_wait.json.ocp_status | default('') != 'monitoring'
+      retries: "{{ troshka_ocp_poll_retries }}"
+      delay: "{{ troshka_ocp_poll_interval }}"
+      when: _troshka_project_status.json.ocp_status | default('') == 'monitoring'
   no_log: true
 
 - name: Create portal token
