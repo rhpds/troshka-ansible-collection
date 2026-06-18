@@ -19,3 +19,7 @@ troshka_inject_vars: {}
 # Polling configuration
 troshka_deploy_poll_interval: 15
 troshka_deploy_poll_retries: 240  # 1 hour timeout (240 * 15s)
+
+# OCP readiness polling — longer intervals for template mode (full install)
+troshka_ocp_poll_interval: "{{ 60 if troshka_deploy_mode == 'template' else 15 }}"
+troshka_ocp_poll_retries: "{{ 120 if troshka_deploy_mode == 'template' else 60 }}"

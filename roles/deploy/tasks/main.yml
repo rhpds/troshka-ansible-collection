@@ -67,7 +67,7 @@
     - name: Build template YAML from agnosticv variables
       ansible.builtin.set_fact:
         _troshka_template_yaml:
-          name: "{{ ocp.cluster_name | default('ocp') }}"
+          template_name: "{{ template_name | default(ocp.cluster_name | default('ocp')) }}"
           install_method: "{{ install_method | default('agent') }}"
           networks: "{{ networks }}"
           gateway: "{{ gateway | default({}) }}"
@@ -162,8 +162,8 @@
     status_code: 200
   register: _troshka_ocp_wait
   until: _troshka_ocp_wait.json.ocp_status | default('') != 'monitoring'
-  retries: 180
-  delay: 15
+  retries: "{{ troshka_ocp_poll_retries }}"
+  delay: "{{ troshka_ocp_poll_interval }}"
   when: _troshka_project_status.json.ocp_status | default('') == 'monitoring'
   no_log: true
 
