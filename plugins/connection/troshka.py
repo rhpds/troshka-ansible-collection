@@ -67,7 +67,7 @@ DOCUMENTATION = """
         troshka_timeout:
             description: Command execution timeout in seconds
             type: int
-            default: 30
+            default: 300
             vars:
                 - name: troshka_timeout
         private_key_file:
@@ -188,11 +188,23 @@ class Connection(ConnectionBase):
                 timeout=timeout,
             )
         except TroshkaAPIError as e:
-            raise AnsibleConnectionFailure(f"Troshka exec failed: {e}")
+            raise AnsibleConnectionFailure(
+                f"Troshka exec failed (timeout={timeout}s): {e}"
+            )
+
+        if result is None:
+            raise AnsibleConnectionFailure(
+                f"Troshka exec returned empty response (timeout={timeout}s, cmd truncated={log_cmd[:80]})"
+            )
 
         stdout = (result.get("output") or "").encode()
         stderr = (result.get("error") or "").encode()
         exit_code = result.get("exit_code", 0)
+
+        if result.get("timed_out"):
+            display.warning(
+                f"TROSHKA: command timed out after {timeout}s: {log_cmd[:80]}"
+            )
 
         if not exit_code and stderr:
             exit_code = 1

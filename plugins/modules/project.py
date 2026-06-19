@@ -77,6 +77,7 @@ def main():
             common_password=dict(type="str", no_log=True),
             ssh_pub_key=dict(type="str"),
             auto_install_ocp=dict(type="bool", default=True),
+            guid=dict(type="str"),
         ),
         supports_check_mode=False,
     )
@@ -111,6 +112,13 @@ def main():
             result["project_id"] = resp["id"]
             result["name"] = resp.get("name", "")
             result["state"] = "draft"
+
+            if p.get("guid"):
+                api._request(
+                    "PATCH",
+                    f"/api/v1/projects/{resp['id']}",
+                    {"guid": p["guid"]},
+                )
 
         elif state == "absent":
             if not p.get("project_id"):

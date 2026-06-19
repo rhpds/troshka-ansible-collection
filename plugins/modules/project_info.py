@@ -58,7 +58,8 @@ def main():
         argument_spec=dict(
             api_url=dict(type="str", required=True),
             api_key=dict(type="str", required=True, no_log=True),
-            project_id=dict(type="str", required=True),
+            project_id=dict(type="str"),
+            guid=dict(type="str"),
         ),
         supports_check_mode=True,
     )
@@ -71,18 +72,34 @@ def main():
     p = module.params
     try:
         api = TroshkaAPI(p["api_url"], p["api_key"])
-        proj = api.get_project(p["project_id"])
+
+        if p.get("project_id"):
+            proj = api.get_project(p["project_id"])
+        elif p.get("guid"):
+            from urllib.parse import urlencode
+
+            projects = api._request(
+                "GET", f"/api/v1/projects/?{urlencode({'guid': p['guid']})}"
+            )
+            if not projects:
+                module.exit_json(changed=False, found=False, state="", project_id="")
+                return
+            proj = projects[0]
+        else:
+            module.fail_json(msg="project_id or guid required")
+            return
     except TroshkaAPIError as e:
         module.fail_json(msg=str(e))
 
     module.exit_json(
         changed=False,
+        found=True,
         state=proj.get("state", ""),
         name=proj.get("name", ""),
         ocp_status=proj.get("ocp_status", ""),
         topology=proj.get("topology", {}),
         deploy_error=proj.get("deploy_error", ""),
-        project_id=p["project_id"],
+        project_id=proj.get("id", p.get("project_id", "")),
     )
 
 
