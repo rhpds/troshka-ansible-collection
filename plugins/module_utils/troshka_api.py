@@ -36,14 +36,15 @@ class TroshkaAPI:
         if not api_key.startswith("trk_"):
             raise TroshkaAPIError("API key must start with 'trk_'")
 
-    def _request(self, method, path, body=None):
+    def _request(self, method, path, body=None, retries=3):
         """
-        Make an HTTP request to the Troshka API.
+        Make an HTTP request to the Troshka API with retry on transient errors.
 
         Args:
             method: HTTP method (GET, POST, DELETE, etc.)
             path: API path starting with / (e.g., "/api/v1/patterns/")
             body: Optional dict to send as JSON body
+            retries: Number of retries on transient failures (default: 3)
 
         Returns:
             Parsed JSON response
@@ -62,30 +63,41 @@ class TroshkaAPI:
         if body is not None:
             data = json.dumps(body).encode("utf-8")
 
-        req = urllib.request.Request(url, data=data, headers=headers, method=method)
-
-        try:
-            with urllib.request.urlopen(req) as response:
-                response_text = response.read().decode("utf-8")
-                if response_text:
-                    return json.loads(response_text)
-                return None
-        except urllib.error.HTTPError as e:
-            error_body = ""
+        last_error = None
+        for attempt in range(retries + 1):
+            req = urllib.request.Request(url, data=data, headers=headers, method=method)
             try:
-                error_body = e.read().decode("utf-8")
-                error_data = json.loads(error_body)
-                error_msg = error_data.get("detail", error_body)
-            except (json.JSONDecodeError, UnicodeDecodeError):
-                error_msg = error_body if error_body else str(e)
-
-            raise TroshkaAPIError(
-                f"HTTP {e.code} {e.reason} for {method} {path}: {error_msg}"
-            )
-        except urllib.error.URLError as e:
-            raise TroshkaAPIError(f"Failed to connect to {url}: {e.reason}")
-        except json.JSONDecodeError as e:
-            raise TroshkaAPIError(f"Invalid JSON response from {path}: {e}")
+                with urllib.request.urlopen(req) as response:
+                    response_text = response.read().decode("utf-8")
+                    if response_text:
+                        return json.loads(response_text)
+                    return None
+            except urllib.error.HTTPError as e:
+                if e.code in (502, 503, 504) and attempt < retries:
+                    last_error = e
+                    time.sleep(2**attempt)
+                    continue
+                error_body = ""
+                try:
+                    error_body = e.read().decode("utf-8")
+                    error_data = json.loads(error_body)
+                    error_msg = error_data.get("detail", error_body)
+                except (json.JSONDecodeError, UnicodeDecodeError):
+                    error_msg = error_body if error_body else str(e)
+                raise TroshkaAPIError(
+                    f"HTTP {e.code} {e.reason} for {method} {path}: {error_msg}"
+                )
+            except urllib.error.URLError as e:
+                if attempt < retries:
+                    last_error = e
+                    time.sleep(2**attempt)
+                    continue
+                raise TroshkaAPIError(f"Failed to connect to {url}: {e.reason}")
+            except json.JSONDecodeError as e:
+                raise TroshkaAPIError(f"Invalid JSON response from {path}: {e}")
+        raise TroshkaAPIError(
+            f"Request failed after {retries + 1} attempts: {last_error}"
+        )
 
     def list_patterns(self, name=None):
         """
@@ -442,20 +454,32 @@ class TroshkaAPI:
             "Content-Type": f"multipart/form-data; boundary={boundary}",
         }
 
-        req = urllib.request.Request(url, data=body, headers=headers, method="PUT")
-
-        try:
-            with urllib.request.urlopen(req) as response:
-                return json.loads(response.read().decode())
-        except urllib.error.HTTPError as e:
-            error_body = e.read().decode() if e.fp else str(e)
+        last_error = None
+        for attempt in range(4):
+            req = urllib.request.Request(url, data=body, headers=headers, method="PUT")
             try:
-                error_msg = json.loads(error_body).get("detail", error_body)
-            except (json.JSONDecodeError, ValueError):
-                error_msg = error_body
-            raise TroshkaAPIError(f"File upload failed (HTTP {e.code}): {error_msg}")
-        except urllib.error.URLError as e:
-            raise TroshkaAPIError(f"Failed to connect for file upload: {e.reason}")
+                with urllib.request.urlopen(req) as response:
+                    return json.loads(response.read().decode())
+            except urllib.error.HTTPError as e:
+                if e.code in (502, 503, 504) and attempt < 3:
+                    last_error = e
+                    time.sleep(2**attempt)
+                    continue
+                error_body = e.read().decode() if e.fp else str(e)
+                try:
+                    error_msg = json.loads(error_body).get("detail", error_body)
+                except (json.JSONDecodeError, ValueError):
+                    error_msg = error_body
+                raise TroshkaAPIError(
+                    f"File upload failed (HTTP {e.code}): {error_msg}"
+                )
+            except urllib.error.URLError as e:
+                if attempt < 3:
+                    last_error = e
+                    time.sleep(2**attempt)
+                    continue
+                raise TroshkaAPIError(f"Failed to connect for file upload: {e.reason}")
+        raise TroshkaAPIError(f"File upload failed after retries: {last_error}")
 
     def download_file(
         self,
@@ -485,20 +509,34 @@ class TroshkaAPI:
             "Accept": "application/octet-stream",
         }
 
-        req = urllib.request.Request(url, headers=headers, method="GET")
-
-        try:
-            with urllib.request.urlopen(req) as response:
-                data = response.read()
-                with open(local_path, "wb") as f:
-                    f.write(data)
-                return {"size": len(data), "local_path": local_path}
-        except urllib.error.HTTPError as e:
-            error_body = e.read().decode() if e.fp else str(e)
+        last_error = None
+        for attempt in range(4):
+            req = urllib.request.Request(url, headers=headers, method="GET")
             try:
-                error_msg = json.loads(error_body).get("detail", error_body)
-            except (json.JSONDecodeError, ValueError):
-                error_msg = error_body
-            raise TroshkaAPIError(f"File download failed (HTTP {e.code}): {error_msg}")
-        except urllib.error.URLError as e:
-            raise TroshkaAPIError(f"Failed to connect for file download: {e.reason}")
+                with urllib.request.urlopen(req) as response:
+                    data = response.read()
+                    with open(local_path, "wb") as f:
+                        f.write(data)
+                    return {"size": len(data), "local_path": local_path}
+            except urllib.error.HTTPError as e:
+                if e.code in (502, 503, 504) and attempt < 3:
+                    last_error = e
+                    time.sleep(2**attempt)
+                    continue
+                error_body = e.read().decode() if e.fp else str(e)
+                try:
+                    error_msg = json.loads(error_body).get("detail", error_body)
+                except (json.JSONDecodeError, ValueError):
+                    error_msg = error_body
+                raise TroshkaAPIError(
+                    f"File download failed (HTTP {e.code}): {error_msg}"
+                )
+            except urllib.error.URLError as e:
+                if attempt < 3:
+                    last_error = e
+                    time.sleep(2**attempt)
+                    continue
+                raise TroshkaAPIError(
+                    f"Failed to connect for file download: {e.reason}"
+                )
+        raise TroshkaAPIError(f"File download failed after retries: {last_error}")

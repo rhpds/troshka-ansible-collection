@@ -67,7 +67,7 @@ DOCUMENTATION = """
         troshka_timeout:
             description: Command execution timeout in seconds
             type: int
-            default: 300
+            default: 600
             vars:
                 - name: troshka_timeout
         private_key_file:
@@ -205,9 +205,6 @@ class Connection(ConnectionBase):
             display.warning(
                 f"TROSHKA: command timed out after {timeout}s: {log_cmd[:80]}"
             )
-
-        if not exit_code and stderr:
-            exit_code = 1
 
         return exit_code, stdout, stderr
 
