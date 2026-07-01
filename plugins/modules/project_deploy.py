@@ -59,6 +59,8 @@ def main():
             pattern_name=dict(type="str"),
             pattern_id=dict(type="str"),
             name=dict(type="str"),
+            ssh_keys=dict(type="list", elements="str", default=None),
+            common_password=dict(type="str", no_log=True),
         ),
         supports_check_mode=False,
     )
@@ -80,15 +82,29 @@ def main():
         if p["source"] == "pattern":
             pattern_id = p.get("pattern_id")
             if not pattern_id:
+                import re
+
                 name = p.get("pattern_name")
                 if not name:
                     module.fail_json(msg="pattern_name or pattern_id required")
-                patterns = api.list_patterns(name=name)
-                if not patterns:
-                    module.fail_json(msg=f"Pattern '{name}' not found")
+                is_regex = bool(re.search(r"[*+?.\[\]{}()|^$\\]", name))
+                if is_regex:
+                    patterns = api.list_patterns(regex=name)
+                    if not patterns:
+                        module.fail_json(
+                            msg=f"No pattern matching regex '{name}' found"
+                        )
+                else:
+                    patterns = api.list_patterns(name=name)
+                    if not patterns:
+                        module.fail_json(msg=f"Pattern '{name}' not found")
+                result["pattern_name"] = patterns[0].get("name", "")
                 pattern_id = patterns[0]["id"]
             resp = api.deploy_pattern(
-                pattern_id, name=p.get("name") or p.get("pattern_name", "")
+                pattern_id,
+                name=p.get("name") or p.get("pattern_name", ""),
+                ssh_keys=p.get("ssh_keys"),
+                common_password=p.get("common_password"),
             )
             result["changed"] = True
             result["project_id"] = resp["id"]

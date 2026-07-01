@@ -41,9 +41,13 @@ ocp_status:
   type: str
   returned: when available
 topology:
-  description: Full project topology JSONB
+  description: Full project topology JSONB (design-time)
   type: dict
   returned: always
+deployed_topology:
+  description: Deployed topology JSONB with runtime data (domainUuid, etc.)
+  type: dict
+  returned: when available
 deploy_error:
   description: Deploy error message
   type: str
@@ -98,6 +102,7 @@ def main():
         name=proj.get("name", ""),
         ocp_status=proj.get("ocp_status", ""),
         topology=proj.get("topology", {}),
+        deployed_topology=proj.get("deployed_topology", {}),
         deploy_error=proj.get("deploy_error", ""),
         project_id=proj.get("id", p.get("project_id", "")),
     )

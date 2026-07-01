@@ -76,6 +76,12 @@ DOCUMENTATION = """
             vars:
                 - name: ansible_ssh_private_key_file
                 - name: ansible_private_key_file
+        troshka_exec_method:
+            description: Exec method - "auto" (tries ssh, serial, console), "ssh", "serial", or "console"
+            type: str
+            default: auto
+            vars:
+                - name: troshka_exec_method
         remote_password:
             description: SSH password (fallback if no key)
             type: str
@@ -178,6 +184,7 @@ class Connection(ConnectionBase):
         display.vvv(f"TROSHKA EXEC: {log_cmd}", host=self._play_context.remote_addr)
 
         try:
+            exec_method = self.get_option("troshka_exec_method") or "auto"
             result = api.exec_command(
                 project_id,
                 vm_id,
@@ -186,6 +193,7 @@ class Connection(ConnectionBase):
                 password=password,
                 private_key=private_key,
                 timeout=timeout,
+                method=exec_method,
             )
         except TroshkaAPIError as e:
             raise AnsibleConnectionFailure(
@@ -224,6 +232,17 @@ class Connection(ConnectionBase):
         username = self._play_context.remote_user or "cloud-user"
         password = self._play_context.password or ""
 
+        private_key = ""
+        key_path = (
+            self.get_option("private_key_file") or self._play_context.private_key_file
+        )
+        if key_path:
+            try:
+                with open(os.path.expanduser(key_path)) as f:
+                    private_key = f.read()
+            except (OSError, IOError):
+                pass
+
         display.vvv(
             f"TROSHKA PUT: {in_path} -> {out_path}",
             host=self._play_context.remote_addr,
@@ -237,6 +256,7 @@ class Connection(ConnectionBase):
                 out_path,
                 username=username,
                 password=password,
+                private_key=private_key,
             )
         except TroshkaAPIError as e:
             raise AnsibleConnectionFailure(f"Troshka file upload failed: {e}")
@@ -254,6 +274,17 @@ class Connection(ConnectionBase):
         username = self._play_context.remote_user or "cloud-user"
         password = self._play_context.password or ""
 
+        private_key = ""
+        key_path = (
+            self.get_option("private_key_file") or self._play_context.private_key_file
+        )
+        if key_path:
+            try:
+                with open(os.path.expanduser(key_path)) as f:
+                    private_key = f.read()
+            except (OSError, IOError):
+                pass
+
         display.vvv(
             f"TROSHKA FETCH: {in_path} -> {out_path}",
             host=self._play_context.remote_addr,
@@ -267,6 +298,7 @@ class Connection(ConnectionBase):
                 out_path,
                 username=username,
                 password=password,
+                private_key=private_key,
             )
         except TroshkaAPIError as e:
             raise AnsibleConnectionFailure(f"Troshka file download failed: {e}")

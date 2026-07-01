@@ -99,19 +99,25 @@ class TroshkaAPI:
             f"Request failed after {retries + 1} attempts: {last_error}"
         )
 
-    def list_patterns(self, name=None):
+    def list_patterns(self, name=None, search=None, regex=None):
         """
-        List patterns, optionally filtered by name.
+        List patterns, optionally filtered by name, prefix, or regex.
 
         Args:
-            name: Optional pattern name filter
+            name: Optional exact pattern name filter
+            search: Optional prefix search (case-insensitive)
+            regex: Optional regex pattern match (server-side)
 
         Returns:
-            List of pattern dicts
+            List of pattern dicts (newest first)
         """
         path = "/api/v1/patterns/"
         if name:
             path += f"?name={urllib.parse.quote(name)}"
+        elif search:
+            path += f"?search={urllib.parse.quote(search)}"
+        elif regex:
+            path += f"?regex={urllib.parse.quote(regex)}"
         return self._request("GET", path)
 
     def deploy_pattern(
@@ -119,9 +125,11 @@ class TroshkaAPI:
         pattern_id,
         name=None,
         inject_vars=None,
+        ssh_keys=None,
         auto_deploy=True,
         auto_start=True,
         guid=None,
+        common_password=None,
     ):
         """
         Deploy a pattern to create a new project.
@@ -130,9 +138,11 @@ class TroshkaAPI:
             pattern_id: ID of the pattern to deploy
             name: Optional project name (auto-generated if not provided)
             inject_vars: Optional dict of variables to inject into topology
+            ssh_keys: Optional list of SSH public keys to inject into cloud-init
             auto_deploy: Whether to auto-deploy (default: True)
             auto_start: Whether to auto-start VMs (default: True)
             guid: Optional GUID for the project
+            common_password: Optional password to override baked pattern credentials
 
         Returns:
             Project dict with keys: id, name, state, topology
@@ -142,8 +152,12 @@ class TroshkaAPI:
             body["name"] = name
         if inject_vars:
             body["inject_vars"] = inject_vars
+        if ssh_keys:
+            body["ssh_keys"] = ssh_keys
         if guid:
             body["guid"] = guid
+        if common_password:
+            body["common_password"] = common_password
 
         return self._request("POST", f"/api/v1/patterns/{pattern_id}/deploy", body)
 
@@ -388,10 +402,10 @@ class TroshkaAPI:
         """Execute a command on a VM.
 
         Args:
-            method: "ssh", "serial", or "auto"
+            method: "auto" (tries ssh → serial → console), "ssh", "serial", or "console"
 
         Returns:
-            Dict with keys: output, error, exit_code
+            Dict with keys: output, error, exit_code, method
         """
         body = {
             "command": command,
@@ -415,6 +429,7 @@ class TroshkaAPI:
         remote_path,
         username="cloud-user",
         password="",
+        private_key="",
         mode="0644",
     ):
         """Upload a file to a VM via multipart upload.
@@ -434,6 +449,7 @@ class TroshkaAPI:
                 "mode": mode,
                 "username": username,
                 **({"password": password} if password else {}),
+                **({"private_key": private_key} if private_key else {}),
             }
         )
         url = f"{self.api_url}/api/v1/projects/{project_id}/vms/{vm_id}/files?{qs}"
@@ -489,6 +505,7 @@ class TroshkaAPI:
         local_path,
         username="cloud-user",
         password="",
+        private_key="",
     ):
         """Download a file from a VM to a local path.
 
@@ -500,6 +517,7 @@ class TroshkaAPI:
                 "remote_path": remote_path,
                 "username": username,
                 **({"password": password} if password else {}),
+                **({"private_key": private_key} if private_key else {}),
             }
         )
         url = f"{self.api_url}/api/v1/projects/{project_id}/vms/{vm_id}/files?{qs}"
