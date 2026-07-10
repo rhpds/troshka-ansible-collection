@@ -148,6 +148,70 @@ class InventoryModule(BaseInventoryPlugin):
             bastion_node.get("data", {}).get("name", "bastion") if bastion_node else ""
         )
 
+        # Build port forward and external access maps keyed by internal IP
+        gw_node = None
+        for node in nodes:
+            node_data = node.get("data", {})
+            if (
+                node.get("type") == "networkNode"
+                and node_data.get("subtype") == "gateway"
+            ):
+                gw_node = node_data
+                break
+
+        port_forwards_by_ip = {}
+        if gw_node:
+            pfs = gw_node.get("portForwards", [])
+            endpoints = gw_node.get("externalEndpoints", [])
+            eip_map = {eip.get("id"): eip for eip in external_ips}
+            for pf in pfs:
+                int_ip = pf.get("intIp", "")
+                if not int_ip:
+                    continue
+                ext_port = str(pf.get("extPort", ""))
+                int_port = str(pf.get("intPort", ""))
+                route_match = next(
+                    (
+                        ep
+                        for ep in endpoints
+                        if ep.get("type") == "route"
+                        and str(ep.get("port")) == ext_port
+                        and ep.get("vmIp") == int_ip
+                    ),
+                    None,
+                )
+                if not route_match:
+                    route_match = next(
+                        (
+                            ep
+                            for ep in endpoints
+                            if ep.get("type") == "route"
+                            and str(ep.get("port")) == ext_port
+                        ),
+                        None,
+                    )
+                eip = eip_map.get(pf.get("extIpId"))
+                if route_match and route_match.get("hostname"):
+                    hostname = route_match["hostname"]
+                    external_url = (
+                        f"https://{hostname}"
+                        if ext_port == "443"
+                        else f"https://{hostname}:{ext_port}"
+                    )
+                elif eip and eip.get("ip"):
+                    external_url = f"{eip['ip']}:{ext_port}"
+                else:
+                    external_url = ""
+                entry = {
+                    "ext_port": ext_port,
+                    "int_port": int_port,
+                    "proto": pf.get("proto", "tcp"),
+                    "external_url": external_url,
+                }
+                if route_match and route_match.get("hostname"):
+                    entry["hostname"] = route_match["hostname"]
+                port_forwards_by_ip.setdefault(int_ip, []).append(entry)
+
         # Process all VM nodes
         for node in nodes:
             if node.get("type") != "vmNode":
@@ -190,6 +254,9 @@ class InventoryModule(BaseInventoryPlugin):
             # Set host variables
             self.inventory.set_variable(vm_name, "troshka_vm_id", vm_id)
             self.inventory.set_variable(vm_name, "troshka_vm_name", vm_name)
+            self.inventory.set_variable(vm_name, "troshka_internal_ip", vm_ip)
+            if tags:
+                self.inventory.set_variable(vm_name, "troshka_tags", tags)
 
             # Configure connection
             if connection_mode == "troshka":
@@ -218,3 +285,8 @@ class InventoryModule(BaseInventoryPlugin):
                     "ansible_ssh_common_args",
                     f"-o ProxyJump={bastion_external_ip}",
                 )
+
+            # Port forwards targeting this VM
+            vm_forwards = port_forwards_by_ip.get(vm_ip, [])
+            if vm_forwards:
+                self.inventory.set_variable(vm_name, "troshka_forwards", vm_forwards)
