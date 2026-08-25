@@ -37,6 +37,19 @@ options:
   name:
     description: Project name when deploying from pattern
     type: str
+  showroom:
+    description: Override showroom git content when deploying from a pattern snapshot
+    type: dict
+    suboptions:
+      content_repo:
+        description: Git URL for Antora workshop content (showroom init git-cloner)
+        type: str
+      content_ref:
+        description: Git branch, tag, or commit for workshop content
+        type: str
+      build_content:
+        description: Run git-cloner and Antora at deploy. Defaults to true when repo or ref is overridden.
+        type: bool
 """
 
 RETURN = r"""
@@ -61,6 +74,14 @@ def main():
             name=dict(type="str"),
             ssh_keys=dict(type="list", elements="str", default=None),
             common_password=dict(type="str", no_log=True),
+            showroom=dict(
+                type="dict",
+                options=dict(
+                    content_repo=dict(type="str"),
+                    content_ref=dict(type="str"),
+                    build_content=dict(type="bool"),
+                ),
+            ),
         ),
         supports_check_mode=False,
     )
@@ -105,6 +126,7 @@ def main():
                 name=p.get("name") or p.get("pattern_name", ""),
                 ssh_keys=p.get("ssh_keys"),
                 common_password=p.get("common_password"),
+                showroom=p.get("showroom"),
             )
             result["changed"] = True
             result["project_id"] = resp["id"]

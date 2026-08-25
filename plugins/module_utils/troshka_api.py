@@ -120,6 +120,19 @@ class TroshkaAPI:
             path += f"?regex={urllib.parse.quote(regex)}"
         return self._request("GET", path)
 
+    def _showroom_deploy_body(self, showroom):
+        """Build showroom subsection for pattern deploy API body."""
+        if not showroom:
+            return None
+        out = {}
+        if showroom.get("content_repo") is not None:
+            out["content_repo"] = showroom["content_repo"]
+        if showroom.get("content_ref") is not None:
+            out["content_ref"] = showroom["content_ref"]
+        if showroom.get("build_content") is not None:
+            out["build_content"] = showroom["build_content"]
+        return out or None
+
     def deploy_pattern(
         self,
         pattern_id,
@@ -130,6 +143,7 @@ class TroshkaAPI:
         auto_start=True,
         guid=None,
         common_password=None,
+        showroom=None,
     ):
         """
         Deploy a pattern to create a new project.
@@ -143,6 +157,8 @@ class TroshkaAPI:
             auto_start: Whether to auto-start VMs (default: True)
             guid: Optional GUID for the project
             common_password: Optional password to override baked pattern credentials
+            showroom: Optional dict with content_repo, content_ref, build_content
+                overrides for showroom git/Antora at deploy (see Troshka API)
 
         Returns:
             Project dict with keys: id, name, state, topology
@@ -158,6 +174,9 @@ class TroshkaAPI:
             body["guid"] = guid
         if common_password:
             body["common_password"] = common_password
+        showroom_body = self._showroom_deploy_body(showroom)
+        if showroom_body:
+            body["showroom"] = showroom_body
 
         return self._request("POST", f"/api/v1/patterns/{pattern_id}/deploy", body)
 

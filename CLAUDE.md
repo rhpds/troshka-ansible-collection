@@ -14,7 +14,7 @@ Namespace: `agnosticd`, Collection: `cloud_provider_troshka`, Requires Ansible >
 
 ## API Client
 
-`TroshkaAPI(api_url, api_key)` — all keys start with `trk_`. Methods: `list_patterns`, `deploy_pattern`, `deploy_template`, `get_project`, `delete_project`, `start_project`, `stop_project`, `get_deploy_progress`, `create_portal_token`, `capture_pattern`, `wait_for_project_state`, `wait_for_pattern_state`.
+`TroshkaAPI(api_url, api_key)` — all keys start with `trk_`. Methods: `list_patterns`, `deploy_pattern` (optional `showroom` dict: `content_repo`, `content_ref`, `build_content`), `deploy_template`, `get_project`, `delete_project`, `start_project`, `stop_project`, `get_deploy_progress`, `create_portal_token`, `capture_pattern`, `wait_for_project_state`, `wait_for_pattern_state`.
 
 ## Inventory Plugin
 

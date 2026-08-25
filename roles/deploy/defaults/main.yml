@@ -1,0 +1,20 @@
+---
+# Deployment mode: "pattern", "pattern_workloads", or "template"
+troshka_deploy_mode: "pattern"
+
+troshka_auto_deploy: true
+troshka_auto_start: true
+troshka_portal_access_level: "console"
+
+troshka_inject_vars: {}
+
+troshka_deploy_poll_interval: 15
+troshka_deploy_poll_retries: 240
+
+troshka_ocp_poll_interval: "{{ 60 if troshka_deploy_mode == 'template' else 15 }}"
+troshka_ocp_poll_retries: "{{ 120 if troshka_deploy_mode == 'template' else 60 }}"
+
+# Optional showroom git overrides on pattern deploy (see Troshka API showroom block)
+# troshka_showroom_content_repo:
+# troshka_showroom_content_ref:
+# troshka_showroom_build_content:

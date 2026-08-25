@@ -6,7 +6,7 @@ Builds inventory from a Troshka project's topology, grouping hosts by AnsibleGro
 
 from ansible.plugins.inventory import BaseInventoryPlugin
 from ansible.errors import AnsibleError
-from ansible_collections.agnosticd.cloud_provider_troshka.plugins.module_utils.troshka_api import (
+from ansible_collections.troshka.cloud.plugins.module_utils.troshka_api import (
     TroshkaAPI,
     TroshkaAPIError,
 )
@@ -50,7 +50,7 @@ DOCUMENTATION = """
 class InventoryModule(BaseInventoryPlugin):
     """Troshka dynamic inventory plugin."""
 
-    NAME = "agnosticd.cloud_provider_troshka.troshka"
+    NAME = "troshka.cloud.troshka"
 
     def verify_file(self, path):
         """
@@ -263,11 +263,14 @@ class InventoryModule(BaseInventoryPlugin):
                 self.inventory.set_variable(
                     vm_name,
                     "ansible_connection",
-                    "agnosticd.cloud_provider_troshka.troshka",
+                    "troshka.cloud.troshka",
                 )
                 self.inventory.set_variable(vm_name, "troshka_api_url", api_url)
                 self.inventory.set_variable(vm_name, "troshka_api_key", api_key)
                 self.inventory.set_variable(vm_name, "troshka_project_id", project_id)
+                self.inventory.set_variable(vm_name, "troshka_exec_method", "ssh")
+                login_user = data.get("ciLoginUser") or "cloud-user"
+                self.inventory.set_variable(vm_name, "ansible_user", login_user)
                 password = data.get("ciCloudUserPassword", "")
                 if password:
                     self.inventory.set_variable(vm_name, "ansible_password", password)

@@ -1,0 +1,148 @@
+---
+# Deploy a pattern or template to Troshka (troshka.cloud collection)
+
+- name: Set project name
+  ansible.builtin.set_fact:
+    _troshka_project_name: "{{ guid | default(troshka_pattern_name | default('troshka-deployment')) }}"
+
+- name: Build showroom pattern-deploy overrides
+  when:
+    - troshka_showroom_content_repo is defined
+      or troshka_showroom_content_ref is defined
+      or troshka_showroom_build_content is defined
+  ansible.builtin.set_fact:
+    _troshka_showroom: >-
+      {{
+        ({'content_repo': troshka_showroom_content_repo}
+          if troshka_showroom_content_repo is defined else {}) |
+        combine({'content_ref': troshka_showroom_content_ref}
+          if troshka_showroom_content_ref is defined else {}) |
+        combine({'build_content': troshka_showroom_build_content}
+          if troshka_showroom_build_content is defined else {})
+      }}
+
+- name: Deploy from pattern
+  when: troshka_deploy_mode in ['pattern', 'pattern_workloads']
+  block:
+    - name: Deploy pattern
+      troshka.cloud.project_deploy:
+        api_url: "{{ troshka_api_url }}"
+        api_key: "{{ troshka_api_key }}"
+        source: pattern
+        pattern_name: "{{ troshka_pattern_name | default(omit) }}"
+        pattern_id: "{{ troshka_pattern_id | default(omit) }}"
+        name: "{{ _troshka_project_name }}"
+        common_password: "{{ common_password | default(omit) }}"
+        ssh_keys: "{{ troshka_ssh_keys | default(omit) }}"
+        showroom: "{{ _troshka_showroom | default(omit) }}"
+      register: _troshka_deploy
+
+    - name: Set project ID
+      ansible.builtin.set_fact:
+        troshka_project_id: "{{ _troshka_deploy.project_id }}"
+
+- name: Deploy from template
+  when: troshka_deploy_mode == 'template'
+  block:
+    - name: Fail if template YAML sections not defined
+      ansible.builtin.fail:
+        msg: "vms and networks are required for template deployment (from infra_template.yaml)"
+      when: vms is not defined or networks is not defined
+
+    - name: Build template YAML from agnosticv variables
+      ansible.builtin.set_fact:
+        _troshka_template_yaml:
+          template_name: "{{ template_name | default(ocp.cluster_name | default('ocp')) }}"
+          install_method: "{{ install_method | default('agent') }}"
+          networks: "{{ networks }}"
+          gateway: "{{ gateway | default({}) }}"
+          vms: "{{ vms }}"
+          ocp: "{{ ocp | default(omit) }}"
+          dns_records: "{{ dns_records | default(omit) }}"
+          disconnected: "{{ disconnected | default(omit) }}"
+          bastion_services: "{{ bastion_services | default(omit) }}"
+          showroom: "{{ showroom | default(omit) }}"
+          start_order: "{{ start_order | default(omit) }}"
+
+    - name: Create project from template
+      troshka.cloud.project:
+        api_url: "{{ troshka_api_url }}"
+        api_key: "{{ troshka_api_key }}"
+        state: present
+        name: "{{ _troshka_project_name }}"
+        template_yaml: "{{ _troshka_template_yaml }}"
+        common_password: "{{ common_password | default(omit) }}"
+        auto_install_ocp: "{{ auto_install_ocp | default(true) }}"
+        ssh_pub_key: "{{ ssh_provision_pubkey_content | default(omit) }}"
+      register: _troshka_project_create
+
+    - name: Set project ID from template create
+      ansible.builtin.set_fact:
+        troshka_project_id: "{{ _troshka_project_create.project_id }}"
+
+    - name: Trigger template deploy
+      when: troshka_auto_deploy | default(true) | bool
+      troshka.cloud.project_deploy:
+        api_url: "{{ troshka_api_url }}"
+        api_key: "{{ troshka_api_key }}"
+        source: project
+        project_id: "{{ troshka_project_id }}"
+
+- name: Wait for deployment to complete
+  when: troshka_auto_deploy | default(true) | bool
+  troshka.cloud.project_info:
+    api_url: "{{ troshka_api_url }}"
+    api_key: "{{ troshka_api_key }}"
+    project_id: "{{ troshka_project_id }}"
+  register: _troshka_project_poll
+  until: _troshka_project_poll.state in ['active', 'error']
+  retries: "{{ troshka_deploy_poll_retries }}"
+  delay: "{{ troshka_deploy_poll_interval }}"
+
+- name: Wait for OCP cluster readiness (auto_install_ocp only)
+  when: auto_install_ocp | default(true) | bool
+  block:
+    - name: Get project OCP status
+      troshka.cloud.project_info:
+        api_url: "{{ troshka_api_url }}"
+        api_key: "{{ troshka_api_key }}"
+        project_id: "{{ troshka_project_id }}"
+      register: _troshka_project_status
+
+    - name: Wait for OCP cluster readiness
+      when: _troshka_project_status.ocp_status | default('') == 'monitoring'
+      troshka.cloud.project_info:
+        api_url: "{{ troshka_api_url }}"
+        api_key: "{{ troshka_api_key }}"
+        project_id: "{{ troshka_project_id }}"
+      register: _troshka_ocp_poll
+      until: _troshka_ocp_poll.state in ['active', 'error']
+      retries: "{{ troshka_ocp_poll_retries }}"
+      delay: "{{ troshka_ocp_poll_interval }}"
+
+- name: Create portal token
+  troshka.cloud.portal_token:
+    api_url: "{{ troshka_api_url }}"
+    api_key: "{{ troshka_api_key }}"
+    project_id: "{{ troshka_project_id }}"
+    access_level: "{{ troshka_portal_access_level }}"
+  register: _troshka_portal_token
+
+- name: Get project details
+  troshka.cloud.project_info:
+    api_url: "{{ troshka_api_url }}"
+    api_key: "{{ troshka_api_key }}"
+    project_id: "{{ troshka_project_id }}"
+  register: _troshka_project
+
+- name: Set output facts
+  ansible.builtin.set_fact:
+    troshka_project_id: "{{ troshka_project_id }}"
+    troshka_portal_url: "{{ _troshka_portal_token.portal_url }}"
+
+- name: Display deployment summary
+  ansible.builtin.debug:
+    msg:
+      - "Deployment complete"
+      - "Project ID: {{ troshka_project_id }}"
+      - "Portal URL: {{ troshka_portal_url }}"
