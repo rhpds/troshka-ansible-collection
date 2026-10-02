@@ -48,6 +48,13 @@ deployed_topology:
   description: Deployed topology JSONB with runtime data (domainUuid, etc.)
   type: dict
   returned: when available
+showroom_url:
+  description: >-
+    Public showroom URL from deployed_topology._showroom_url (includes
+    static ?token= capability token when Troshka has stamped one). Empty
+    when the project has no showroom or the URL is not stamped yet.
+  type: str
+  returned: always
 deploy_error:
   description: Deploy error message
   type: str
@@ -55,6 +62,11 @@ deploy_error:
 """
 
 from ansible.module_utils.basic import AnsibleModule  # noqa: E402
+
+
+def _showroom_url_from_project(proj):
+    deployed = proj.get("deployed_topology") or {}
+    return (deployed.get("_showroom_url") or "").strip()
 
 
 def main():
@@ -103,6 +115,7 @@ def main():
         ocp_status=proj.get("ocp_status", ""),
         topology=proj.get("topology", {}),
         deployed_topology=proj.get("deployed_topology", {}),
+        showroom_url=_showroom_url_from_project(proj),
         deploy_error=proj.get("deploy_error", ""),
         project_id=proj.get("id", p.get("project_id", "")),
     )

@@ -1,6 +1,6 @@
 namespace: troshka
 name: cloud
-version: 1.0.0
+version: 1.0.1
 authors:
   - Troshka Team
 description: Ansible modules for managing Troshka nested VM environments

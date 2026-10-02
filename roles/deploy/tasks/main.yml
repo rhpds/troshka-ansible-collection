@@ -139,6 +139,7 @@
   ansible.builtin.set_fact:
     troshka_project_id: "{{ troshka_project_id }}"
     troshka_portal_url: "{{ _troshka_portal_token.portal_url }}"
+    troshka_showroom_url: "{{ _troshka_project.showroom_url | default('') }}"
 
 - name: Display deployment summary
   ansible.builtin.debug:
@@ -146,3 +147,4 @@
       - "Deployment complete"
       - "Project ID: {{ troshka_project_id }}"
       - "Portal URL: {{ troshka_portal_url }}"
+      - "Showroom URL: {{ troshka_showroom_url }}"

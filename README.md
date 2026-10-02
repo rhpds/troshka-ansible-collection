@@ -33,6 +33,16 @@ troshka_portal_access_level: console
 #include /includes/secrets/troshka-prod.yaml
 ```
 
+After a successful deploy the role sets:
+
+| Fact | Description |
+|------|-------------|
+| `troshka_project_id` | Deployed project UUID |
+| `troshka_portal_url` | Troshka portal URL (capability-token portal) |
+| `troshka_showroom_url` | Public showroom URL from the API (`deployed_topology._showroom_url`, includes static `?token=` when stamped) |
+
+`troshka.cloud.project_info` also returns top-level `showroom_url` for the same value.
+
 ### Required variables
 
 | Variable | Description |
