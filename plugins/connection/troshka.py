@@ -18,6 +18,8 @@ Usage in inventory::
 
 from __future__ import annotations
 
+import ast
+import json
 import os
 import shlex
 
@@ -26,6 +28,42 @@ from ansible.plugins.connection import ConnectionBase
 from ansible.utils.display import Display
 
 display = Display()
+
+
+def _coerce_ansible_module_stdout(raw: str) -> bytes:
+    """Normalize module stdout to JSON bytes for Ansible's result parser.
+
+    Troshka exec over SSH sometimes returns Ansible module output as a Python
+    repr (single-quoted dict) instead of JSON. Ansible's action plugin only
+    accepts JSON in module_stdout.
+    """
+    text = (raw or "").strip()
+    if not text:
+        return b""
+
+    candidates = [text]
+    if "\n" in text:
+        # Module JSON/repr is usually the last non-empty line (after MOTD etc.)
+        lines = [line.strip() for line in text.splitlines() if line.strip()]
+        for line in reversed(lines):
+            if line.startswith(("{", "[")):
+                candidates.insert(0, line)
+
+    for candidate in candidates:
+        try:
+            json.loads(candidate)
+            return candidate.encode("utf-8")
+        except json.JSONDecodeError:
+            pass
+        if candidate.startswith(("{", "[")):
+            try:
+                parsed = ast.literal_eval(candidate)
+                return json.dumps(parsed).encode("utf-8")
+            except (SyntaxError, ValueError, MemoryError):
+                continue
+
+    return raw.encode("utf-8")
+
 
 DOCUMENTATION = """
     name: troshka
@@ -205,7 +243,7 @@ class Connection(ConnectionBase):
                 f"Troshka exec returned empty response (timeout={timeout}s, cmd truncated={log_cmd[:80]})"
             )
 
-        stdout = (result.get("output") or "").encode()
+        stdout = _coerce_ansible_module_stdout(result.get("output") or "")
         stderr = (result.get("error") or "").encode()
         exit_code = result.get("exit_code", 0)
 
